@@ -67,9 +67,19 @@ LangChain 是构建 LLM 应用的主流开源框架（Python / JS），目标是
 
 ### 模型 I/O
 
-- **Models**：`ChatOpenAI`、`ChatAnthropic` 等统一封装各厂商接口，屏蔽细微差异。
+- **两类大模型，按场景选**：
+  - **LLM（文本生成模型）**：一段文本进、一段文本出，如 Llama、Qwen，适合翻译/总结等简单任务。
+  - **ChatModel（对话模型）**：接收一组带角色标记的"对话消息"，返回一条消息，如 GPT-4o，适合多轮对话——因为它能更好地理解对话上下文的逻辑。
 - **Prompts**：`PromptTemplate`（变量插值）、`ChatPromptTemplate`（多角色消息模板）。
-- **Output Parsers**：把自由文本解析成结构化结果（`StrOutputParser`、JSON、Pydantic 对象）。
+- **Output Parsers**：把自由文本解析成结构化结果（`StrOutputParser`、JSON、Pydantic）。
+
+#### 消息角色：不只是"谁在说话"
+
+> 初学者常误以为 `system` / `user` / `assistant` 只是区分发言者身份。实际上，**角色的核心作用是表达不同层级的约束关系**：
+
+- **system**：不参与具体问答，为模型设定整体行为规则（身份、风格、行为边界）。
+- **user**：本轮用户希望完成的具体任务（问题、指令或补充）。
+- **assistant**：本质不是身份标识，而是**对话历史的一部分**，靠它保持上下文连续性（再配合 `tool` 回填工具结果）。
 
 ### 数据连接
 
@@ -93,6 +103,32 @@ print(llm_chain.invoke({"text": "LangChain 是构建 LLM 应用的框架。"}))
 
 - **组合即复用**：`|` 连接的整条链本身又是一个可再组合的组件。
 - **内置批处理/流式/异步**：`.invoke()`、`.stream()`、`.batch()`、`.ainvoke()` 等接口统一，切换开销低。
+
+#### 常用 Runnable 组件
+
+| 组件 | 作用 |
+| ---- | ---- |
+| **RunnableSequence** | 线性流转，`A | B | C` 顺序执行 |
+| **RunnableBranch** | 动态路由，按条件/LLM 理解匹配目标链 |
+| **RunnableMap** | 并行容器，同时执行多个 Runnable，合并结果 |
+| **RunnablePassthrough** | "透传"，原样传递输入（或据此派生数据），常用于保留原始输入 |
+| **RunnableWithMessageHistory** | 让链具备对话记忆（配合 `BaseChatMessageHistory`） |
+
+**路由链（新版基于 Runnable 范式）**：`目标链（多种场景 Runnable）` + `路由选择器（条件/LLM 判断）` + `默认链（兜底）`。路由选择器决定"这个输入走哪条支线"，匹配不上就走默认兜底。
+
+#### 对话记忆：history 无限增长怎么办
+
+多轮会话里 `history` 无限增长，必须做**上下文管理**，常用方案：
+
+1. **全量记忆（最简）**：完整保存所有历史，适合短对话，长对话 token 爆炸。
+2. **滑动窗口（窗口记忆）**：只保留最近 N 轮，控 token，适合普通聊天。
+3. **自动摘要（摘要记忆）**：历史过长时用 LLM 总结旧对话，用摘要替代原始历史，兼顾连贯与效率。
+4. **短期 + 长期记忆（Agent 常用）**：短期存最近几轮（Memory/窗口），长期把重要信息存数据库——向量库（Qdrant/Milvus）存知识、图数据库（Neo4j）存用户关系/偏好/事实。
+
+生产环境通常是**组合**：
+`System Prompt + 最近 N 轮对话 + 历史摘要 + 长期记忆检索结果`，而不是永久保存完整 `history`。
+
+> Memory 的两个核心动作：**存储（Save）**——把每轮 Human/AI 消息写入介质；**提取（Load）**——新轮次前把历史取出注入 Prompt（即"记忆 = 对小窗口的检索"）。
 
 ### 传统 LangChain 的局限
 
@@ -151,6 +187,13 @@ app = graph.compile()
   - 定义 State 的字段时附一个 reducer 函数（如 `operator.add` / `add_messages`），同 key 多份更新时按 reducer 合并，而不是互相覆盖。
   - `add_messages` 是内置最常用的 reducer，让多路并行节点都能把消息正确追加。
 - 这是 LangGraph 比普通链路"状态纪律化"的关键：**谁会写、如何合并、冲突怎么办，都由图定义讲清楚。**
+- **节点是"纯函数"**：读 State → 执行 → 返回状态补丁（只含要更新的字段，不必返回完整状态）。例如只更新 `progress` 就返回 `{"progress": 1}`，LangGraph 自动合并进全局 State。
+
+#### 字段设计的三个原则
+
+- **最小必要原则**：只定义工作流必须的字段，避免冗余数据占内存。
+- **可更新原则**：只有需要跨节点传递/修改的数据才设为状态字段，固定不变的配置不放入。
+- **清晰命名原则**：字段名直观反映含义，如 `user_query` / `generated_text` / `quality_score`。
 
 ---
 
