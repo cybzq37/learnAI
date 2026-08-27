@@ -1,26 +1,10 @@
 ### 反射机制
 
-反射具有以下特性：
-- 运行时类信息访问：反射机制允许程序在运行时获取类的完整结构信息，包括类名、包名、父类、实现的接口、构造函数、方法和字段等。
-- 动态对象创建：可以使用反射API动态地创建对象实例，即使在编译时不知道具体的类名。通常通过 Constructor.newInstance() 方法实现（Class.newInstance() 自 Java 9 起已被标记为 @Deprecated，推荐使用 clazz.getDeclaredConstructor().newInstance()）。
-- 动态方法调用：可以在运行时动态地调用对象的方法，包括私有方法。这通过Method类的invoke()方法实现，允许你传入对象实例和参数值来执行方法。
-- 访问和修改字段值：反射还允许程序在运行时访问和修改对象的字段值，即使是私有的。这是通过Field类的get()和set()方法完成的。
-
-反射通过运行时读取class实现。
+反射通过在运行时读取 class 文件信息，获取类的信息，动态的进行对象的创建、方法调用等操作。
 
 ### 注解
 
-注解本质是一个继承了Annotation的特殊接口，其具体实现类是Java运行时生成的动态代理类。
-
-我们通过反射获取注解时，返回的是Java运行时生成的动态代理对象。通过代理对象调用自定义注解的方法，会最终调用AnnotationInvocationHandler的invoke方法。该方法会从memberValues这个Map中索引出对应的值。而memberValues的来源是Java常量池。
-
-### 垃圾回收
-
-### 解释和编译过程
-
-Java经过编译之后生成字节码文件，接下来进入JVM中，就有两个步骤编译和解释。 
-
-JVM 启动后由解释器逐条解释执行字节码；同时 JVM 通过方法调用计数器和回边计数器识别热点代码，达到阈值后由 JIT 编译为本地机器码并缓存到 Code Cache中，后续执行直接走机器码。
+注解是一个继承了Annotation的特殊接口，通过Java的反射API Class.getAnnotations()从JVM内存中获取注解对象。
 
 ### 值传递和引用传递
 
@@ -28,50 +12,142 @@ JVM 启动后由解释器逐条解释执行字节码；同时 JVM 通过方法�
 
 ### 重载和重写的区别
 
-### 设计模式
-
-### 抽象类和普通类、接口的区别
-
-- 实例化：普通类可以直接实例化对象，而抽象类不能被实例化，只能被继承。
-
-- 方法实现：普通类中的方法可以有具体的实现，而抽象类中的方法可以有实现也可以没有实现。
-
-- 接口用于定义行为规范，可以多实现，只能有常量和抽象方法（Java 8 以后可以有默认方法和静态方法）。适用于定义类的能力或功能。
+重载（Overload）是“同类不同参”，重写（Override）是“子类改父类”
 
 ### 深拷贝和浅拷贝的区别
 
-- 浅拷贝是指只复制对象本身和其内部的值类型字段，但不会复制对象内部的引用类型字段。换句话说，浅拷贝只是创建一个新的对象，然后将原对象的字段值复制到新对象中，但如果原对象内部有引用类型的字段，只是将引用复制到新对象中，两个对象指向的是同一个引用对象。
-- 深拷贝是指在复制对象的同时，将对象内部的所有引用类型字段的内容也复制一份，而不是共享引用。换句话说，深拷贝会递归复制对象内部所有引用类型的字段，生成一个全新的对象以及其内部的所有对象。
+- 浅拷贝（Shallow Copy）只复制对象本身和其内部的基本数据类型，而对于内部的引用类型对象，只复制其内存地址（引用），新旧对象共享该引用对象；
+- 深拷贝（Deep Copy）则完全复制整个对象图，包括内部所有引用类型所指向的对象，新旧对象完全独立，互不影响。
 
 ### java的异常体系
 
-### completedFuture
+```text
+                Throwable (根类)
+                /         \
+            Error         Exception (可处理)
+            /  \           /             \
+   OutOfMemoryError    RuntimeException   (受检异常)
+   StackOverflowError      \                 \
+                   NullPointerException    IOException
+                   ClassCastException      SQLException
+                   IndexOutOfBounds        FileNotFoundException
+```
 
-java的异步回调：
+### Future 与 completedFuture
 
-- Future用于表示异步计算的结果，只能通过阻塞或者轮询的方式获取结果，而且不支持设置回调方法，Java 8之前若要设置回调一般会使用guava的ListenableFuture，回调的引入又会导致臭名昭著的回调地狱（下面的例子会通过ListenableFuture的使用来具体进行展示）。
-- CompletableFuture对Future进行了扩展，可以通过设置回调的方式处理计算结果，同时也支持组合操作，支持进一步的编排，同时一定程度解决了回调地狱的问题。
+在 CompletableFuture 之前，Java 用 Future 表示一个异步任务的结果
 
-### java21协程
+```java
+ExecutorService executor = Executors.newSingleThreadExecutor();
+Future<String> future = executor.submit(() -> {
+    Thread.sleep(3000);
+    return "外卖到了";
+});
 
-虚拟线程：这是 Java 21 引入的一种轻量级并发的新选择。它的栈在堆上动态分配，运行时挂载到平台载体线程（carrier thread）上执行，挂起时栈被卸载到堆中，因此可以创建大量虚拟线程而不消耗大量内存，显著提升了 I/O 密集型应用的吞吐量和响应速度。可以使用静态构建方法、构建器或 ExecutorService 来创建和使用虚拟线程。
+// 痛点1：只能轮询检查
+while (!future.isDone()) {
+    Thread.sleep(500); // 傻等
+}
+
+// 痛点2：获取结果会阻塞当前线程
+String result = future.get(); // 必须阻塞等待
+
+// 痛点3：无法串联多个异步任务
+// 拿到结果后想继续处理？很难！
+```
+
+CompletableFuture 实现了 Future 接口，但提供了 50+ 个方法，让你能像写同步代码一样写异步代码。
+
+1. 非阻塞回调
+```java
+CompletableFuture.supplyAsync(() -> {
+    Thread.sleep(3000);
+    return "外卖到了";
+}).thenAccept(result -> {
+    System.out.println(result); // 3秒后自动打印，不阻塞主线程
+});
+
+System.out.println("我先干别的去"); // 立即执行
+```
+
+2. 链式组合（流水线处理）
+```java
+CompletableFuture.supplyAsync(() -> "取外卖")
+    .thenApply(address -> "去" + address + "取")   // 转换
+    .thenApply(msg -> msg + "，然后回家")           // 继续转换
+    .thenAccept(System.out::println);              // 最终消费
+```
+
+3. 合并多个异步任务
+```java
+CompletableFuture<String> order = CompletableFuture.supplyAsync(() -> "下单");
+CompletableFuture<String> cook = CompletableFuture.supplyAsync(() -> "做饭");
+CompletableFuture<String> deliver = CompletableFuture.supplyAsync(() -> "配送");
+
+// 等所有任务都完成
+CompletableFuture.allOf(order, cook, deliver).join();
+
+// 或者任意一个完成就继续
+CompletableFuture.anyOf(order, cook, deliver).thenAccept(System.out::println);
+```
+
+4. 异常处理（更优雅）
+```java
+CompletableFuture.supplyAsync(() -> {
+    if (Math.random() > 0.5) throw new RuntimeException("厨房着火");
+    return "美食";
+}).exceptionally(ex -> {
+    System.out.println("出错了：" + ex.getMessage());
+    return "泡面"; // 默认兜底
+}).thenAccept(System.out::println);
+```
+
+5. 手动控制完成时机
+```java
+CompletableFuture<String> future = new CompletableFuture<>();
+
+// 在另一个线程中手动完成
+new Thread(() -> {
+    Thread.sleep(2000);
+    future.complete("结果来了");
+}).start();
+
+// 主线程可以继续干别的事，2秒后自动拿到结果
+future.thenAccept(System.out::println);
+```
 
 ### 序列化和反序列化的实现
 
-其实，像序列化和反序列化，无论这些可逆操作是什么机制，都会有对应的处理和解析协议，例如加密和解密，TCP的粘包和拆包，序列化机制是通过序列化协议来进行处理的，和 class 文件类似，它其实是定义了序列化后的字节流格式，然后对此格式进行操作，生成符合格式的字节流或者将字节流解析成对象。
+- 标记接口 Serializable：这是所有可序列化Java类的“通行证”。它是一个空接口，不包含任何方法，仅仅作为标记，告诉JVM这个类的对象可以被序列化。如果一个类没有实现它，在序列化时就会抛出NotSerializableException异常。
+- 序列化流 ObjectOutputStream：用于执行序列化操作。它的核心方法是 writeObject(Object obj)，能将传入的对象转换为字节流并写入到与之关联的输出流中（如文件流）。
+- 反序列化流 ObjectInputStream：用于执行反序列化操作。它的核心方法是 readObject()，能从与之关联的输入流中读取字节序列，并将其重构为原始的Java对象。
 
-在Java中通过序列化对象流来完成序列化和反序列化：
+```java
+public class User implements Serializable {
+    // ... 其他代码
 
-ObjectOutputStream：通过writeObject(）方法做序列化操作。
-ObjectInputStrean：通过readObject()方法做反序列化操作。
-只有实现了Serializable或Externalizable接口的类的对象才能被序列化，否则抛出异常！
+    private void writeObject(ObjectOutputStream out) throws IOException {
+        out.defaultWriteObject(); // 先执行默认序列化
+        // 在此添加自定义逻辑，例如加密 password
+        out.writeObject("加密后的密码"); 
+    }
 
-通过实现 ObjectInputStream.readObject() 和 ObjectOutputStream.writeObject(obj) 
+    private void readObject(ObjectInputStream in) throws IOException, ClassNotFoundException {
+        in.defaultReadObject(); // 先执行默认反序列化
+        // 在此添加自定义逻辑，例如解密 password
+        String encryptedPwd = (String) in.readObject();
+        // this.password = decrypt(encryptedPwd); 
+    }
+}
+```
 
 ## 设计模式
 
-### volatile 和 sychronized 如何实现单例模式
+### 单例模式
 
+1. 懒汉式
+2. 饿汉式
+3. 双重检查锁
 ```java
 public class SingleTon {
 
@@ -80,10 +156,9 @@ public class SingleTon {
     private SingleTon(){}
      
     public static  SingleTon getInstance(){
-        if(instance == null){
-            //同步代码块 只有在第一次获取对象的时候会执行到 ，第二次及以后访问时 instance变量均非null故不会往下执行了 直接返回啦
+        if(instance == null){ // 第一次检查（不加锁）
             synchronized(SingleTon.class){
-                if(instance == null){
+                if(instance == null){ // 第二次检查（加锁）
                     instance = new SingleTon();
                 }
             }
@@ -92,98 +167,222 @@ public class SingleTon {
     }
 }
 ```
-正确的双重检查锁定模式需要使用 volatile。volatile主要包含两个功能。
 
-- 保证可见性。使用 volatile 定义的变量，将会保证对所有线程的可见性。
-- 禁止指令重排序优化。 
+### 代理模式和适配器模式区别
 
-由于 volatile 禁止对象创建时指令之间重排序，所以其他线程不会访问到一个未初始化的对象，从而保证安全性。
+- 适配器模式（Adapter）：解决接口不兼容的问题。它充当“转换器”，让原本因接口不匹配而无法一起工作的两个类能够协同工作。
+- 代理模式（Proxy）：解决访问控制的问题。它充当“中间人”，在不改变原接口的前提下，控制对目标对象的访问，或在访问前后添加额外的功能。
 
-### 代理模式和适配器模式有什么区别
+### 责任链模式
 
-- 目的不同：代理模式主要关注控制对对象的访问，而适配器模式则用于接口转换，使不兼容的类能够一起工作。  
-- 结构不同：代理模式一般包含抽象主题、真实主题和代理三个角色，适配器模式包含目标接口、适配器和被适配者三个角色。  
-- 应用场景不同：代理模式常用于添加额外功能或控制对对象的访问，适配器模式常用于让不兼容的接口协同工作。
-
-### 责任链模式使用场景是什么
-
-责任链模式的使用场景核心很明确，就是一个请求需要多个独立的处理逻辑来承接，同时不想让请求发起方和所有处理者产生强关联，还得让处理流程能灵活调整，简单说就是谁能处理就谁来接手，整个处理顺序和参与节点能按需改动。
-
-比如实际开发里最常遇到的接口请求校验，用户调用我们的接口时，可能得先检查登录状态，再验证 token 是否有效，接着确认接口访问权限，最后还要限制请求频率，这些校验逻辑各自独立，而且不同接口需要的校验步骤不一样，比如登录接口只需要验证验证码，查询用户信息的接口得同时过登录和权限校验。要是不用责任链，就得在每个接口里写一堆 if-else 把这些校验串起来，后续想改某个校验规则，所有相关接口都得动，维护起来特别麻烦。
+将多个处理器串成链，请求沿链传递，直到被某个处理器处理或抵达链尾，从而解耦发送者与接收者。
 
 ### 策略模式
 
-策略模式定义一系列算法，把它们一个个封装起来，并且使它们可相互替换。从而让算法可独立于使用它的客户而变化。
+策略模式定义一组算法并封装成独立策略，让客户端根据需要动态互换，从而将算法定义与使用分离。
 
 ## I/O 面试题
 
 ### BIO/NIO/AIO 区别
 
-- BIO（blocking IO）：就是传统的 java.io 包，它是基于流模型实现的，交互的方式是**同步阻塞**方式，也就是说在读入输入流或者输出流时，在读写动作完成之前，线程会一直阻塞在那里，它们之间的调用是可靠的线性顺序。优点是代码比较简单、直观；缺点是 IO 的效率和扩展性很低，容易成为应用性能瓶颈。
-- NIO（non-blocking IO）是 Java 1.4 引入的 java.nio 包，提供了 Channel、Selector、Buffer 等新的抽象，可以构建**多路复用、同步非阻塞** IO 程序，同时提供了更接近操作系统底层高性能的数据操作方式。
-- AIO（Asynchronous IO）是 Java 1.7 引入的，对 NIO 的扩展，提供了**异步非阻塞**的 IO 操作方式，所以人们叫它 AIO（Asynchronous IO）。异步 IO 是基于事件和回调机制实现的，也就是应用操作之后会直接返回，不会阻塞在那里，当后台处理完成，操作系统会通知相应的线程进行后续的操作。
+- BIO（blocking IO）：**同步阻塞**，线程调用 read() 后原地等待，直到数据到达内核并拷贝到程序内存，期间线程无法做任何事。
+- NIO（non-blocking IO）是 Java 1.4 引入的 java.nio 包，提供了 Channel、Selector、Buffer 等新的抽象，可以构建**多路复用、同步非阻塞** IO 程序，线程发起读请求后立即返回，通过循环不断轮询内核数据是否就绪，期间线程可以处理其他轻量任务。
+- AIO（Asynchronous IO）是 Java 1.7 引入的，对 NIO 的扩展，提供了**异步非阻塞**的 IO 操作方式，所以人们叫它 AIO（Asynchronous IO）。异步 IO 是基于事件和回调机制实现的，线程发起读请求后直接去做别的事，等内核把数据完全准备好并拷贝到用户内存后，主动回调通知线程来取。
+
+```java
+import java.io.InputStream;
+import java.net.ServerSocket;
+import java.net.Socket;
+
+public class BIOServer {
+    public static void main(String[] args) throws Exception {
+        ServerSocket serverSocket = new ServerSocket(8080);
+        System.out.println("BIO Server 启动在 8080");
+
+        while (true) {
+            // 【阻塞点 1】: accept() 会一直阻塞，直到有客户端连接
+            Socket socket = serverSocket.accept();
+            System.out.println("新客户端连接：" + socket.getRemoteSocketAddress());
+
+            // 每个连接新建一个线程处理（为了演示，直接用内部类）
+            new Thread(() -> {
+                try {
+                    byte[] data = new byte[1024];
+                    InputStream inputStream = socket.getInputStream();
+                    while (true) {
+                        // 【阻塞点 2】: read() 会一直阻塞，直到客户端发来数据或关闭连接
+                        int len = inputStream.read(data);
+                        if (len == -1) break;
+                        System.out.println("收到数据：" + new String(data, 0, len));
+                    }
+                } catch (Exception e) {
+                    e.printStackTrace();
+                }
+            }).start();
+        }
+    }
+}
+```
+
+```java
+import java.net.InetSocketAddress;
+import java.nio.ByteBuffer;
+import java.nio.channels.*;
+import java.util.Iterator;
+
+public class NIOServer {
+    public static void main(String[] args) throws Exception {
+        // 1. 创建 ServerSocketChannel 并设置为非阻塞
+        ServerSocketChannel serverChannel = ServerSocketChannel.open();
+        serverChannel.configureBlocking(false); // 【关键】非阻塞
+        serverChannel.socket().bind(new InetSocketAddress(8080));
+
+        // 2. 创建 Selector（多路复用器）
+        Selector selector = Selector.open();
+        // 将 ServerSocketChannel 注册到 Selector，关注 OP_ACCEPT 事件
+        serverChannel.register(selector, SelectionKey.OP_ACCEPT);
+
+        System.out.println("NIO Server 启动在 8080，使用单线程轮询");
+
+        while (true) {
+            // 【阻塞点】: select() 会阻塞，直到有感兴趣的事件发生（但可以设置超时）
+            // 注意：这个阻塞是空闲时的阻塞，不会因为某个连接不读写就卡死
+            selector.select();
+
+            Iterator<SelectionKey> keyIterator = selector.selectedKeys().iterator();
+            while (keyIterator.hasNext()) {
+                SelectionKey key = keyIterator.next();
+                keyIterator.remove(); // 必须手动移除，否则重复处理
+
+                if (key.isAcceptable()) {
+                    // 有新的连接请求
+                    ServerSocketChannel ssc = (ServerSocketChannel) key.channel();
+                    SocketChannel clientChannel = ssc.accept(); // 此时非阻塞，因为已经确认有事件
+                    clientChannel.configureBlocking(false);
+                    // 将新连接注册到 Selector，关注 OP_READ 事件（可读）
+                    clientChannel.register(selector, SelectionKey.OP_READ);
+                    System.out.println("新连接接入：" + clientChannel.getRemoteAddress());
+
+                } else if (key.isReadable()) {
+                    // 有数据可读（不需要轮询等待，内核已经告诉我们可以读了）
+                    SocketChannel clientChannel = (SocketChannel) key.channel();
+                    ByteBuffer buffer = ByteBuffer.allocate(1024);
+                    // 【非阻塞读】: 此时 read 会立即返回，因为 Selector 已经确认有数据
+                    int len = clientChannel.read(buffer);
+                    if (len == -1) {
+                        clientChannel.close();
+                    } else {
+                        buffer.flip();
+                        System.out.println("收到数据：" + new String(buffer.array(), 0, len));
+                    }
+                }
+            }
+        }
+    }
+}
+```
+
+```java
+import java.net.InetSocketAddress;
+import java.nio.ByteBuffer;
+import java.nio.channels.AsynchronousServerSocketChannel;
+import java.nio.channels.AsynchronousSocketChannel;
+import java.nio.channels.CompletionHandler;
+
+public class AIOServer {
+    public static void main(String[] args) throws Exception {
+        // 创建异步服务端通道
+        AsynchronousServerSocketChannel serverChannel = AsynchronousServerSocketChannel.open();
+        serverChannel.bind(new InetSocketAddress(8080));
+        System.out.println("AIO Server 启动在 8080");
+
+        // 接受客户端连接（异步，立即返回）
+        serverChannel.accept(null, new CompletionHandler<AsynchronousSocketChannel, Void>() {
+            @Override
+            public void completed(AsynchronousSocketChannel clientChannel, Void attachment) {
+                // 当连接成功建立时，此方法被回调
+                System.out.println("新连接接入：" + clientChannel.getRemoteAddress());
+
+                // 【重要】必须再次调用 accept() 循环监听下一个连接，否则只接受一个
+                serverChannel.accept(null, this);
+
+                // 开始异步读取数据
+                ByteBuffer buffer = ByteBuffer.allocate(1024);
+                // 【发起异步读】: 第三个参数是回调处理器
+                clientChannel.read(buffer, buffer, new CompletionHandler<Integer, ByteBuffer>() {
+                    @Override
+                    public void completed(Integer result, ByteBuffer attachment) {
+                        // 【回调】: 当内核把数据拷贝到 Buffer 后，自动调用此方法
+                        attachment.flip();
+                        System.out.println("收到数据：" + new String(attachment.array(), 0, result));
+                        // 继续异步读取下一条数据（保持长连接监听）
+                        clientChannel.read(attachment, attachment, this);
+                    }
+
+                    @Override
+                    public void failed(Throwable exc, ByteBuffer attachment) {
+                        System.out.println("读取失败：" + exc.getMessage());
+                    }
+                });
+
+                System.out.println("【注意】: 读操作已发起，用户线程继续执行，不阻塞！");
+            }
+
+            @Override
+            public void failed(Throwable exc, Void attachment) {
+                System.out.println("连接接受失败：" + exc.getMessage());
+            }
+        });
+
+        // 让主线程不退出（否则进程结束）
+        System.out.println("主线程继续执行其他业务逻辑...");
+        Thread.sleep(Integer.MAX_VALUE);
+    }
+}
+```
 
 
 ## 集合面试题
 
 ### Java中的集合有哪些
 
-List是**有序**的Collection，使用此接口能够精确的控制每个元素的插入位置，用户能根据索引访问List中元素。常用的实现List的类有LinkedList，ArrayList，Vector，Stack。
+Java集合框架根接口是 java.util.Collection（单列集合） 和 java.util.Map（双列集合）。
 
-- ArrayList 是容量可变的**非线程安全**列表，其底层使用数组实现。当集合扩容时，会创建更大的数组，并把原数组复制到新数组。ArrayList 支持对元素的快速随机访问，在尾部追加/删除元素效率很高，但在中间位置插入/删除需要搬移元素，代价较高。
-- LinkedList 本质是一个**双向链表**，支持高效的头尾插入/删除和作为双端队列使用。
+**Collection体系**
 
-> LinkedList 插入/删除比 ArrayList 更快 是一个常见误区：其 **O(1) 的前提是已经持有目标节点的引用**；如果要在任意位置插入/删除，仍需先 O(n) 遍历链表找到位置，加上每个节点都需要独立分配、对 CPU 缓存不友好，实测大多数场景下 LinkedList 反而比 ArrayList 慢，这也是现在主流建议优先使用 ArrayList 的原因。
+（1）List
 
-Set不允许存在重复的元素，与List不同，set中的元素是**无序**的。常用的实现有HashSet，LinkedHashSet 和 TreeSet。
+- ArrayList：数组实现，查询快（O(1)），增删慢（尤其是中间位置，O(n)）。最常用，默认容量10，扩容1.5倍。
+- LinkedList：双向链表实现，增删快（O(1)），查询慢（O(n)）。同时实现了 Deque 接口，可做栈或队列。
 
-- HashSet通过HashMap实现，HashMap的Key即HashSet存储的元素，所有Key都是用相同的Value，一个名为PRESENT的Object类型常量。使用Key保证元素唯一性，但不保证有序性。由于其底层的 HashMap 本身就是非线程安全的，因此 HashSet 也是非线程安全的。
-- LinkedHashSet继承自HashSet，通过LinkedHashMap实现，使用双向链表维护元素插入顺序。
-- TreeSet通过TreeMap实现的，添加元素到集合时按照比较规则将其插入合适的位置，保证插入后的集合仍然有序。
+> LinkedList 插入比 ArrayList 快的前提是已经持有目标节点的引用，如果要在任意位置插入/删除，仍需先 O(n) 遍历链表找到位置。
 
-Map 是一个键值对集合，存储键、值和之间的映射。**Key 无序，唯一**；value 不要求有序，允许重复。Map 没有继承于 Collection 接口，从 Map 集合中检索元素时，只要给出键对象，就会返回对应的值对象。主要实现有TreeMap、HashMap、Hashtable、LinkedHashMap、ConcurrentHashMap
+（2）Set
 
-- HashMap：JDK1.8 之前 HashMap 由数组+链表组成的，数组是 HashMap 的主体，链表则是主要为了解决哈希冲突而存在的（"拉链法"解决冲突），JDK1.8 以后在解决哈希冲突时有了较大的变化：当某个桶的链表长度 ≥ 8 且哈希表数组长度 ≥ 64 时，才会将该链表转化为红黑树，以减少搜索时间；如果数组长度 < 64，则只会触发扩容而不做树化。
-- LinkedHashMap：LinkedHashMap 继承自 HashMap，所以它的底层仍然是基于拉链式散列结构即由数组和链表或红黑树组成。另外，LinkedHashMap 在上面结构的基础上，增加了一条双向链表，使得上面的结构可以保持键值对的插入顺序。同时通过对链表进行相应的操作，实现了访问顺序相关逻辑。
-- Hashtable：数组+链表组成的，数组是 Hashtable 的主体，链表则是主要为了解决哈希冲突而存在的
-- TreeMap：红黑树（自平衡的排序二叉树）
-- ConcurrentHashMap：Node数组+链表+红黑树实现，线程安全的（jdk1.8以前Segment锁，1.8以后volatile + CAS 或者 synchronized）
+- HashSet：底层是 HashMap（只使用 Key），存储无序，允许 null，O(1) 复杂度。判断相等依赖 hashCode() 和 equals()。
+- LinkedHashSet：继承 HashSet，底层是 LinkedHashMap，维护插入顺序（链表记录顺序），遍历比 HashSet 慢但有序。
+- TreeSet：底层是 红黑树（TreeMap），自动排序（自然排序或定制 Comparator），O(log n)，不允许 null（因需要比较）。
 
-### java并发集合
+（3）Queue/Deque
 
-java.util.concurrent 包提供的都是线程安全的集合：
+- ArrayDeque：循环数组实现，双端队列，比 Stack 和 LinkedList 做队列性能更好，推荐作为栈/队列使用。
+- PriorityQueue：二叉堆（数组） 实现，优先级队列，按优先级出队，不是FIFO，不允许 null，O(log n)。
+- ConcurrentLinkedQueue：CAS + 链表，高并发下的无界非阻塞队列。
 
-**并发Map**
+**Map体系**
 
-ConcurrentHashMap：它与 Hashtable 的主要区别是二者加锁粒度的不同，在 JDK 1.7，ConcurrentHashMap 加的是分段锁，也就是 Segment 锁，每个 Segment 含有整个 table 的一部分，这样不同分段之间的并发操作就互不影响。在 JDK 1.8，它取消了 Segment，直接在 table 元素（桶的头节点）上加锁，使加锁粒度进一步缩小到单个桶级别。对于 put 操作，如果 Key 对应的数组槽位为 null，则通过 CAS 操作（Compare and Swap）将新节点写入该槽位；如果槽位不为 null（即已存在链表头或红黑树根节点），则对该头节点使用 synchronized 加锁，然后遍历桶中的数据执行替换或新增。如果该 put 操作使得当前桶的链表长度超过阈值，则将其转换为红黑树，从而提高查找效率。
-ConcurrentSkipListMap：实现了一个基于SkipList（跳表）算法的可排序的并发集合，SkipList是一种可以在对数预期时间内完成搜索、插入、删除等操作的数据结构，通过维护多个指向其他元素的“跳跃”链接来实现高效查找。
+- HashMap：数组 + 链表 + 红黑树（JDK 8+）。无序，允许一个 null Key。最常用，初始容量16，负载因子0.75，扩容2倍。链表长度 > 8 且数组长度 > 64 时树化。
+- LinkedHashMap：继承 HashMap，内部加了一条双向链表维护插入顺序或访问顺序（accessOrder）。常用于实现 LRU 缓存。
+- TreeMap：红黑树实现，Key 自动排序（Comparable 或 Comparator），O(log n)，不允许 null Key（需比较）。
+- Hashtable：遗留类（JDK 1.0），线程安全（synchronized），不允许 null Key/Value，已被淘汰，替代品是 ConcurrentHashMap。
+- Properties：继承 Hashtable，专门用于读取 .properties 配置文件，Key/Value 都是 String。
 
-**并发Set**
 
-ConcurrentSkipListSet：是线程安全的有序的集合。底层是使用ConcurrentSkipListMap实现。
-CopyOnWriteArraySet：是线程安全的Set实现，它是线程安全的无序的集合，可以将它理解成线程安全的HashSet。有意思的是，CopyOnWriteArraySet和HashSet虽然都继承于共同的父类AbstractSet；但是，HashSet是通过“散列表”实现的，而CopyOnWriteArraySet则是通过“动态数组(CopyOnWriteArrayList)”实现的，并不是散列表。
+**JUC包**
 
-**并发List**
-
-CopyOnWriteArrayList：它是 ArrayList 的线程安全的变体，其中所有写操作（add，set等）都通过对底层数组进行全新复制来实现，允许存储 null 元素。即当对象进行写操作时，使用了Lock锁做同步处理，内部拷贝了原数组，并在新数组上进行添加操作，最后将新数组替换掉旧数组；若进行的读操作，则直接返回结果，操作过程中不需要进行同步。
-
-**并发 Queue**
-
-ConcurrentLinkedQueue：是一个适用于高并发场景下的队列，它通过无锁的方式(CAS)，实现了高并发状态下的高性能。通常，ConcurrentLinkedQueue 的性能要好于 BlockingQueue 。
-BlockingQueue：与 ConcurrentLinkedQueue 的使用场景不同，BlockingQueue 的主要功能并不是在于提升高并发时的队列性能，而在于简化多线程间的数据共享。BlockingQueue 提供一种读写阻塞等待的机制，即如果消费者速度较快，则 BlockingQueue 则可能被清空，此时消费线程再试图从 BlockingQueue 读取数据时就会被阻塞。反之，如果生产线程较快，则 BlockingQueue 可能会被装满，此时，生产线程再试图向 BlockingQueue 队列装入数据时，便会被阻塞等待。
-
-**并发 Deque**
-
-LinkedBlockingDeque：是一个线程安全的双端队列实现。它的内部使用链表结构，每一个节点都维护了一个前驱节点和一个后驱节点。LinkedBlockingDeque 没有进行读写锁的分离，因此同一时间只能有一个线程对其进行操作
-ConcurrentLinkedDeque：ConcurrentLinkedDeque是一种基于链接节点的无限并发链表。可以安全地并发执行插入、删除和访问操作。当许多线程同时访问一个公共集合时，ConcurrentLinkedDeque是一个合适的选择。
-
-### 集合的遍历方法
-
-- 普通 for 循环： 可以使用带有索引的普通 for 循环来遍历 List。
-- 增强 for 循环（for-each循环）： 用于循环访问数组或集合中的元素。
-- Iterator 迭代器： 可以使用迭代器来遍历集合，特别适用于需要删除元素的情况。
-- 使用 forEach 方法： Java 8引入了 forEach 方法，可以对集合进行快速遍历。
-- Stream API： Java 8的Stream API提供了丰富的功能，可以对集合进行函数式操作，如过滤、映射等。
+- ConcurrentHashMap：分段锁（JDK 7）+ CAS + synchronized（JDK 8），高并发下线程安全且性能极高，面试必问。
+- CopyOnWriteArrayList ArrayList	写时复制，写操作加锁，读操作无锁，适合读多写少的场景。
+- CopyOnWriteArraySet	HashSet	底层基于 CopyOnWriteArrayList，同上述特性。
 
 ## 并发面试题
 
@@ -400,22 +599,23 @@ JVM 运行时内存共分为 **虚拟机栈、堆、元空间、程序计数器�
 
 JVM的内存结构主要分为以下几个部分：
 
-- 程序计数器：可以看作是当前线程所执行的字节码的行号指示器，用于存储当前线程正在执行的 Java 方法的 JVM 指令地址。如果线程执行的是 Native 方法，计数器值为 undefined（未定义）——因为 native 方法由本地代码实现，不再对应字节码指令。它是唯一一个在 Java 虚拟机规范中没有规定任何 OutOfMemoryError 情况的区域，生命周期与线程相同。
-- Java 虚拟机栈：每个线程都有自己独立的 Java 虚拟机栈，生命周期与线程相同。每个方法在执行时都会创建一个栈帧，用于存储局部变量表、操作数栈、动态链接、方法出口等信息。可能会抛出 StackOverflowError 和 OutOfMemoryError 异常。
-- 本地方法栈：与 Java 虚拟机栈类似，主要为虚拟机使用到的 Native 方法服务，在 HotSpot 虚拟机中和 Java 虚拟机栈合二为一。本地方法执行时也会创建栈帧，同样可能出现 StackOverflowError 和 OutOfMemoryError 两种错误。
-- Java 堆：是 JVM 中最大的一块内存区域，被所有线程共享，在虚拟机启动时创建，用于存放对象实例。从内存回收角度，堆被划分为新生代和老年代，新生代又分为 Eden 区和两个 Survivor 区（From Survivor 和 To Survivor）。如果在堆中没有内存完成实例分配，并且堆也无法扩展时会抛出 OutOfMemoryError 异常。
-- 方法区（元空间）：在 JDK 1.8 及以后的版本中，方法区被元空间取代，使用本地内存。用于存储已被虚拟机加载的类信息、常量、静态变量等数据。虽然方法区被描述为堆的逻辑部分，但有 “非堆” 的别名。方法区可以选择不实现垃圾收集，内存不足时会抛出 OutOfMemoryError 异常。
-运行时常量池：是方法区的一部分，用于存放编译期生成的各种字面量和符号引用，具有动态性，运行时也可将新的常量放入池中。当无法申请到足够内存时，会抛出 OutOfMemoryError 异常。
+- **堆**：是 JVM 中最大的一块内存区域，被所有线程共享，在虚拟机启动时创建，用于存放对象实例。从内存回收角度，堆被划分为新生代和老年代，新生代又分为 Eden 区和两个 Survivor 区（From Survivor 和 To Survivor）。如果在堆中没有内存完成实例分配，并且堆也无法扩展时会抛出 OutOfMemoryError 异常。
+- **虚拟机栈**：每个线程都有自己独立的 Java 虚拟机栈，生命周期与线程相同。每个方法在执行时都会创建一个栈帧，用于存储局部变量表、操作数栈、动态链接、方法出口等信息。可能会抛出 StackOverflowError 和 OutOfMemoryError 异常。
+- **本地方法栈**：与 Java 虚拟机栈类似，主要为虚拟机使用到的 Native 方法服务，在 HotSpot 虚拟机中和 Java 虚拟机栈合二为一。本地方法执行时也会创建栈帧，同样可能出现 StackOverflowError 和 OutOfMemoryError 两种错误。
+- **程序计数器**：可以看作是当前线程所执行的字节码的行号指示器，用于存储当前线程正在执行的 Java 方法的 JVM 指令地址，是唯一一个在 Java 虚拟机规范中没有规定任何 OutOfMemoryError 情况的区域，生命周期与线程相同。
+- **元空间**：在 JDK 1.8 及以后的版本中，方法区被元空间取代，使用本地内存，用于存储已被虚拟机加载的类信息、常量、静态变量等数据。虽然方法区被描述为堆的逻辑部分，但有 “非堆” 的别名。方法区可以选择不实现垃圾收集，内存不足时会抛出 OutOfMemoryError 异常。
+
+- 运行时常量池：是方法区的一部分，用于存放编译期生成的各种字面量和符号引用，具有动态性，运行时也可将新的常量放入池中。当无法申请到足够内存时，会抛出 OutOfMemoryError 异常。
 - 直接内存：不属于 JVM 运行时数据区的一部分，通过 NIO 类引入，是一种堆外内存，可以显著提高 I/O 性能。直接内存的使用受到本机总内存的限制，若分配不当，可能导致 OutOfMemoryError 异常。
 
 栈中存储的不是对象，而是对象的引用。
 
 ### 堆分为哪几部分
 
-- 新生代（Young Generation）：新生代分为 Eden Space 和 Survivor Space。Eden 区是新生代中最大的区域（默认 Eden:S0:S1 = 8:1:1），大多数新创建的对象首先存放在这里。当 Eden 区满时，会触发一次 Minor GC（新生代垃圾回收）。在Survivor Spaces中，通常分为两个相等大小的区域，称为S0（Survivor 0）和S1（Survivor 1）。在每次Minor GC后，存活下来的对象会被移动到其中一个Survivor空间，以继续它们的生命周期。这两个区域轮流充当对象的中转站，帮助区分短暂存活的对象和长期存活的对象。
-- 老年代（Old Generation/Tenured Generation）:存放过一次或多次Minor GC仍存活的对象会被移动到老年代。老年代中的对象生命周期较长，因此Major GC（也称为Full GC，涉及老年代的垃圾回收）发生的频率相对较低，但其执行时间通常比Minor GC长。老年代的空间通常比新生代大，以存储更多的长期存活对象。
-- 元空间（Metaspace）:从Java 8开始，永久代（Permanent Generation）被元空间取代，用于存储类的元数据信息，如类的结构信息（如字段、方法信息等）。元空间并不在Java堆中，而是使用本地内存，这解决了永久代容易出现的内存溢出问题。
-- 大对象（Humongous Objects）：在 G1 垃圾收集器中，任何超过 Region 一半大小的对象都会被认定为 Humongous Object，直接分配在一组连续的 Humongous Region 中；这些 Region 在 G1 的逻辑上属于老年代的一部分（但有独立的分配策略），避免大对象在年轻代频繁被复制移动而带来的开销。传统的分代 GC（如 Parallel / CMS）中，超过 -XX:PretenureSizeThreshold 的大对象也会直接分配到老年代，原因同样是避免在 Eden 和 Survivor 之间反复复制。
+- **新生代**：新生代分为 Eden Space 和 Survivor Space。Eden 区是新生代中最大的区域（默认 Eden:S0:S1 = 8:1:1），大多数新创建的对象首先存放在这里。当 Eden 区满时，会触发一次 Minor GC（新生代垃圾回收）。在Survivor Spaces中，通常分为两个相等大小的区域，称为S0（Survivor 0）和S1（Survivor 1）。在每次Minor GC后，存活下来的对象会被移动到其中一个Survivor空间，以继续它们的生命周期。这两个区域轮流充当对象的中转站，帮助区分短暂存活的对象和长期存活的对象。
+- **老年代**:存放过一次或多次Minor GC仍存活的对象会被移动到老年代。老年代中的对象生命周期较长，因此Major GC（也称为Full GC，涉及老年代的垃圾回收）发生的频率相对较低，但其执行时间通常比Minor GC长。老年代的空间通常比新生代大，以存储更多的长期存活对象。
+- **元空间**：从Java 8开始，永久代（Permanent Generation）被元空间取代，用于存储类的元数据信息，如类的结构信息（如字段、方法信息等）。元空间并不在Java堆中，而是使用本地内存，这解决了永久代容易出现的内存溢出问题。
+- 大对象：在 G1 垃圾收集器中，任何超过 Region 一半大小的对象都会被认定为 Humongous Object，直接分配在一组连续的 Humongous Region 中；这些 Region 在 G1 的逻辑上属于老年代的一部分（但有独立的分配策略），避免大对象在年轻代频繁被复制移动而带来的开销。传统的分代 GC（如 Parallel / CMS）中，超过 -XX:PretenureSizeThreshold 的大对象也会直接分配到老年代，原因同样是避免在 Eden 和 Survivor 之间反复复制。
 
 
 ### 强软弱虚
