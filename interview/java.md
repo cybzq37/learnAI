@@ -613,14 +613,51 @@ JVM的内存结构主要分为以下几个部分：
 ### 堆分为哪几部分
 
 - **新生代**：新生代分为 Eden Space 和 Survivor Space。Eden 区是新生代中最大的区域（默认 Eden:S0:S1 = 8:1:1），大多数新创建的对象首先存放在这里。当 Eden 区满时，会触发一次 Minor GC（新生代垃圾回收）。在Survivor Spaces中，通常分为两个相等大小的区域，称为S0（Survivor 0）和S1（Survivor 1）。在每次Minor GC后，存活下来的对象会被移动到其中一个Survivor空间，以继续它们的生命周期。这两个区域轮流充当对象的中转站，帮助区分短暂存活的对象和长期存活的对象。
-- **老年代**:存放过一次或多次Minor GC仍存活的对象会被移动到老年代。老年代中的对象生命周期较长，因此Major GC（也称为Full GC，涉及老年代的垃圾回收）发生的频率相对较低，但其执行时间通常比Minor GC长。老年代的空间通常比新生代大，以存储更多的长期存活对象。
+- **老年代**: 存放过一次或多次Minor GC仍存活的对象会被移动到老年代。老年代中的对象生命周期较长，因此Major GC（也称为Full GC，涉及老年代的垃圾回收）发生的频率相对较低，但其执行时间通常比Minor GC长。老年代的空间通常比新生代大，以存储更多的长期存活对象。
 - **元空间**：从Java 8开始，永久代（Permanent Generation）被元空间取代，用于存储类的元数据信息，如类的结构信息（如字段、方法信息等）。元空间并不在Java堆中，而是使用本地内存，这解决了永久代容易出现的内存溢出问题。
 - 大对象：在 G1 垃圾收集器中，任何超过 Region 一半大小的对象都会被认定为 Humongous Object，直接分配在一组连续的 Humongous Region 中；这些 Region 在 G1 的逻辑上属于老年代的一部分（但有独立的分配策略），避免大对象在年轻代频繁被复制移动而带来的开销。传统的分代 GC（如 Parallel / CMS）中，超过 -XX:PretenureSizeThreshold 的大对象也会直接分配到老年代，原因同样是避免在 Eden 和 Survivor 之间反复复制。
 
 
 ### 强软弱虚
 
+- 强引用：永不回收（OOM也不回收）
+- 软引用：内存不足时回收（OOM之前）
+- 弱引用：下一次GC时 (无论内存是否够) ThreadLocal、WeakHashMap
+- 虚引用：无法通过它获取对象，用于追踪内存回收、堆外内存释放
+
+```java
+Object obj = new Object(); // 这就是强引用
+obj = null; // 手动置空，GC才有可能回收
+```
+
+```java
+// 模拟大对象
+Object heavyObj = new Object();
+SoftReference<Object> softRef = new SoftReference<>(heavyObj);
+
+heavyObj = null; // 去除强引用
+
+// 当内存不足时，softRef.get() 会返回 null
+Object cachedObj = softRef.get(); 
+if (cachedObj == null) {
+    // 重新构建对象（因为已经被回收了）
+}
+```
+
+```java
+Object obj = new Object();
+WeakReference<Object> weakRef = new WeakReference<>(obj);
+
+obj = null; // 去掉强引用
+// 此时调用 System.gc()，weakRef.get() 极大概率返回 null
+```
+
 ### ThreadLocal
+
+它的核心作用用一句话概括就是：让每个线程拥有自己独立的变量副本，互不干扰。
+
+ThreadLocalMap的Key是弱引用（WeakReference），但Value是强引用，当外部不再引用ThreadLocal对象时（比如方法执行完），Key会在下次GC时被回收，变成null。但Value由于是强引用，且链是 Thread -> ThreadLocalMap -> Entry(value)，如果当前线程一直存活（比如Web应用中的线程池），那么过时的Value就永远无法被回收，导致内存泄漏。
+**最佳实践**：每次使用完ThreadLocal，务必在finally块中调用remove()方法！
 
 ### 内存泄漏与内存溢出
 
