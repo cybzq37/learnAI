@@ -419,9 +419,85 @@ public enum Singleton {
 
 ### 工厂模式（简单工厂 / 工厂方法 / 抽象工厂）
 
-- 简单工厂：一个工厂类，根据参数（如 type）用 if/switch 创建不同产品。缺点：新增产品要改工厂类，违背开闭原则。
-- 工厂方法：定义创建对象的接口（抽象工厂类），让子类决定实例化哪个类。每个产品对应一个具体工厂。
-- 抽象工厂：围绕一个"产品族"创建相关对象，如创建一套 UI 组件（Windows 风格/ Mac 风格）。
+**简单工厂**：一个工厂类，根据参数（如 type）用 if/switch 创建不同产品。缺点：新增产品要改工厂类，违背开闭原则。
+
+```java
+// 产品接口与具体产品
+public interface Product {
+    void use();
+}
+public class ProductA implements Product {
+    @Override public void use() { System.out.println("使用产品 A"); }
+}
+public class ProductB implements Product {
+    @Override public void use() { System.out.println("使用产品 B"); }
+}
+
+// 简单工厂：根据参数用 if/switch 创建不同产品
+public class SimpleFactory {
+    public static Product create(String type) {
+        if ("A".equals(type)) return new ProductA();
+        if ("B".equals(type)) return new ProductB();
+        throw new IllegalArgumentException("未知产品类型: " + type);
+    }
+}
+// 使用：Product p = SimpleFactory.create("A"); // 新增产品 C 需修改 create()，违背开闭原则
+```
+
+**工厂方法**：定义创建对象的接口（抽象工厂类），让子类决定实例化哪个类。每个产品对应一个具体工厂。
+
+```java
+// 抽象工厂：定义"工厂方法" create()，由子类决定实例化哪个类
+public interface ProductFactory {
+    Product create();
+}
+// 具体工厂：每个产品对应一个具体工厂，新增产品只需新增工厂类，无需修改已有代码
+public class ProductAFactory implements ProductFactory {
+    @Override public Product create() { return new ProductA(); }
+}
+public class ProductBFactory implements ProductFactory {
+    @Override public Product create() { return new ProductB(); }
+}
+// 使用：ProductFactory factory = new ProductAFactory(); Product p = factory.create();
+```
+
+**抽象工厂**：围绕一个"产品族"创建相关对象，如创建一套 UI 组件（Windows 风格/ Mac 风格）。
+
+```java
+// 抽象产品
+public interface Button { void render(); }
+public interface TextBox { void render(); }
+
+// 具体产品（Windows 风格 / Mac 风格）
+public class WinButton implements Button {
+    @Override public void render() { System.out.println("Windows 按钮"); }
+}
+public class WinTextBox implements TextBox {
+    @Override public void render() { System.out.println("Windows 输入框"); }
+}
+public class MacButton implements Button {
+    @Override public void render() { System.out.println("Mac 按钮"); }
+}
+public class MacTextBox implements TextBox {
+    @Override public void render() { System.out.println("Mac 输入框"); }
+}
+
+// 抽象工厂：定义一整套"产品族"的创建接口
+public interface UIFactory {
+    Button createButton();
+    TextBox createTextBox();
+}
+// 具体工厂：保证同一套组件风格一致，切换工厂即可整套换肤
+public class WinFactory implements UIFactory {
+    @Override public Button createButton() { return new WinButton(); }
+    @Override public TextBox createTextBox() { return new WinTextBox(); }
+}
+public class MacFactory implements UIFactory {
+    @Override public Button createButton() { return new MacButton(); }
+    @Override public TextBox createTextBox() { return new MacTextBox(); }
+}
+// 使用：UIFactory factory = new WinFactory(); // 换为 new MacFactory() 即整套换成 Mac 风格
+```
 
 **Spring 中的体现**：BeanFactory 就是工厂模式的典范，`getBean()` 根据名称/类型创建或获取对象，屏蔽了对象创建的细节。
 
@@ -504,7 +580,7 @@ public class OrderService {
 ### BIO/NIO/AIO 区别
 
 - BIO（blocking IO）：**同步阻塞**，线程调用 read() 后原地等待，直到数据到达内核并拷贝到程序内存，期间线程无法做任何事。
-- NIO（non-blocking IO）是 Java 1.4 引入的 java.nio 包，提供了 Channel、Selector、Buffer 等新的抽象，可以构建**多路复用、同步非阻塞** IO 程序，线程发起读请求后立即返回，通过循环不断轮询内核数据是否就绪，期间线程可以处理其他轻量任务。
+- NIO（non-blocking IO）核心是 Reactor模式，一个Selector（选择器）线程会负责管理成百上千个Channel，可以构建**多路复用、同步非阻塞** IO 程序，线程发起读请求后立即返回，通过循环不断轮询内核数据是否就绪，期间线程可以处理其他轻量任务。
 - AIO（Asynchronous IO）是 Java 1.7 引入的，对 NIO 的扩展，提供了**异步非阻塞**的 IO 操作方式，所以人们叫它 AIO（Asynchronous IO）。异步 IO 是基于事件和回调机制实现的，线程发起读请求后直接去做别的事，等内核把数据完全准备好并拷贝到用户内存后，主动回调通知线程来取。
 
 ```java
