@@ -46,6 +46,30 @@ public String get(String key) {
 }
 ```
 
+**布隆过滤器是什么**：一种空间效率极高的**概率型数据结构**，用来快速判断"一个元素**一定不在**集合里 / **可能在**集合里"。
+
+- 底层是一个**很长的二进制位数组**（初始全 0）+ 多个哈希函数；
+- **添加元素**：用 k 个哈希函数算出 k 个位置，全部置为 1；
+- **查询元素**：算同样的 k 个位置，**只要有 1 个位置是 0 → 一定不存在**（可安全拦截）；全是 1 → **可能存在**（可能误判）。
+
+```java
+// 初始化（预估数据量 100w，误判率 0.01），数据预热时把所有存在的 id 加入
+BloomFilter<String> bloom = BloomFilter.create(Funnels.stringFunnel(Charset.forName("UTF-8")), 1000000, 0.01);
+bloom.put("1001"); bloom.put("1002"); // ...
+
+public Object getData(String key) {
+    if (!bloom.mightContain(key)) return null;   // 一定不存在 → 直接拦截，不打 DB
+    Object value = redis.get(key);               // 可能存在 → 正常走缓存 → DB
+    if (value == null) {
+        value = db.query(key);
+        redis.set(key, value, 300);
+    }
+    return value;
+}
+```
+
+**关键特性**：① 优点：省内存（100w 条约 1MB）、查询 O(k) 极快；② 有误判（假阳性）：不存在的元素可能被放行（查 DB 返回空，无害）；③ **不漏判**：已加入的元素绝不会被误判为不存在；④ **无法删除**（置 0 会误伤其他元素），要支持删除可用**布谷鸟过滤器**。其他场景：URL 去重、垃圾邮件过滤、HBase/Cassandra 判断数据是否在磁盘。
+
 ### 缓存与数据库一致性如何保证
 
 - **Cache Aside（先更新数据库，再删缓存，推荐）**：更新 DB 成功后再删缓存，下次读取时重建。为什么"删"而不是"更新"：避免并发写导致缓存被旧值覆盖，且删缓存更简单。
@@ -85,6 +109,130 @@ redis.eval(lua, Arrays.asList("lock:order:1"), Arrays.asList(uuid));
 
 - **大 key**：单个 key 的 value 过大（大字符串、上百万元素的集合），导致阻塞、网络拥塞。解决：拆分、压缩、过期删除。
 - **热 key**：访问量极高的 key，可能压垮单节点。解决：本地缓存、key 加随机后缀分散、读写分离。
+
+### 如何用 Redis 实现限流（高价值）
+
+限流目的：控制单位时间内的请求量，防止接口被刷爆、保护下游。常见算法四种：**固定窗口、滑动窗口、漏桶、令牌桶**。
+
+**① 固定窗口计数（INCR + EXPIRE，最简单）**
+
+```java
+// 伪代码：1 秒内最多 100 次
+String key = "rate:api:" + System.currentTimeMillis() / 1000; // 当前秒作为窗口 key
+long count = redis.incr(key);        // 计数 +1（原子）
+if (count == 1) redis.expire(key, 1); // 首次设置 1 秒过期
+if (count > 100) { 拒绝请求; return; }
+放行请求;
+```
+
+缺点：**临界问题**——窗口边界处流量可瞬间翻倍（如 0.9s 内请求 100 次 + 1.0s 后又请求 100 次）。
+
+**② 滑动窗口（Zset，精确）**
+
+```java
+// 伪代码：统计最近 1 秒内的请求数
+long now = System.currentTimeMillis();
+String key = "sliding:api";
+// 1. 移除窗口外的旧记录（Zset 按时间戳排序，score = 时间戳）
+redis.zremrangeByScore(key, 0, now - 1000);
+// 2. 统计窗口内请求数
+long count = redis.zcard(key);
+if (count >= 100) { 拒绝请求; return; }
+// 3. 当前请求加入窗口（member 用唯一值如 UUID 防重复）
+redis.zadd(key, now, uuid);
+redis.expire(key, 2); // 兜底过期，防 key 无限增长
+放行请求;
+```
+
+优点：无临界问题；缺点：每个请求都要存一条记录，**内存开销大**，适合精确控制小流量。
+
+**③ 漏桶算法（Redis List 实现，控制速率恒定）**
+
+**原理**：把请求想象成"水"，桶底有一个固定大小的"漏口"。无论水（请求）多猛地倒进来，**从漏口流出的速率是恒定的**；桶满了（超出容量）的水直接溢出丢弃。
+
+```text
+         请求流入（任意速率）
+              ↓ ↓ ↓ ↓ ↓ ↓ ↓
+        ┌─────────────────────┐
+        │   桶（容量固定，存未处理的请求）│  ← 桶满则溢出丢弃
+        └──────────┬──────────┘
+                   ↓ 漏口（固定速率流出，如每秒 10 个）
+             处理请求（恒定速率）
+```
+
+- **核心思想**：输出速率恒定 = 平滑突发流量（削峰填谷），**不管请求多猛，处理速度永远 ≤ 漏口速率**；
+- **用 Redis 实现**：List 当桶（LPUSH 入桶、RPOP 出桶），后台任务固定速率出桶即可（或用 Zset 时间戳模拟匀速漏出）；
+- **特点**：平滑流量、恒定速率，适合保护下游；**缺点**：突发流量直接被丢弃（即使下游有能力处理，也只能按固定速率慢慢漏），响应不及时。
+
+```java
+// 伪代码：桶容量 100，请求先进桶，按固定速率漏出
+String key = "bucket:api";
+long size = redis.llen(key);
+if (size >= 100) { 拒绝请求（桶满了直接丢弃）; return; }
+redis.lpush(key, "1");       // 入桶
+redis.expire(key, 2);
+// 后台任务：固定速率 rpop 出桶，即"匀速处理"
+```
+
+**④ 令牌桶（Lua 脚本，最常用，支持突发）**
+
+**原理**：桶里放的是"令牌"，而不是请求。系统**以固定速率往桶里放令牌**（如每秒 10 个），桶有容量上限（如 100 个，放满了不再增加）。**每个请求必须取到 1 个令牌才能通过**；没令牌就拒绝或等待。
+
+```text
+        令牌生成器（固定速率，如每秒 10 个）
+                   ↓ ↓ ↓
+        ┌─────────────────────┐
+        │  令牌桶（容量 100，最多存 100 个令牌）│ ← 桶满不再生成
+        └──────────┬──────────┘
+                   ↓ 取令牌
+        请求 ←→ 有令牌放行，无令牌拒绝/等待
+```
+
+- **核心思想**：**限制平均速率 + 允许突发**——桶里攒下的令牌相当于"信用额度"，平时流量低时令牌积攒到满桶，突发时（如双 11 秒杀）可以一口气消耗积攒的令牌，扛住短时高峰，但**长期平均速率被生成速率锁死**；
+- **和漏桶的本质区别**：
+  - 漏桶：输出速率**绝对恒定**，突发必被丢弃，是"被动平滑"；
+  - 令牌桶：允许**先积攒后突发**，能应对瞬时峰值，是"主动蓄水"，更贴近真实业务（平时空闲、峰值高）；
+- **用 Redis 实现**：不真的定时放令牌，而是**懒计算**——用"上次补充时间"算出这期间该补多少令牌（`tokens = min(容量, tokens + (now - last) * 速率)`），一个 Lua 脚本原子完成"补充 + 取令牌"。
+
+```java
+// Lua 脚本：原子地"按速率补充令牌 + 尝试取令牌"
+// key: 桶名   ARGV[1]: 桶容量   ARGV[2]: 每秒补充速率   ARGV[3]: 当前时间(秒)
+String lua = ""
+    + "local tokens = tonumber(redis.call('get', KEYS[1]) or ARGV[1]) "   // 当前令牌数（初始满桶）
+    + "local last = tonumber(redis.call('get', KEYS[1]..':ts') or ARGV[3]) "
+    + "local now = tonumber(ARGV[3]) "
+    + "local rate = tonumber(ARGV[2]) "
+    + "local cap = tonumber(ARGV[1]) "
+    + "tokens = math.min(cap, tokens + (now - last) * rate) "              // 按流逝时间补充令牌
+    + "if tokens >= 1 then "
+    + "  redis.call('set', KEYS[1], tokens - 1, 'EX', 60) "
+    + "  redis.call('set', KEYS[1]..':ts', now, 'EX', 60) "
+    + "  return 1 "
+    + "else "
+    + "  redis.call('set', KEYS[1], tokens, 'EX', 60) "
+    + "  redis.call('set', KEYS[1]..':ts', now, 'EX', 60) "
+    + "  return 0 "
+    + "end";
+// 返回 1 放行，返回 0 拒绝
+Object result = redis.eval(lua, Arrays.asList("bucket:api"), Arrays.asList("100", "10", String.valueOf(System.currentTimeMillis() / 1000)));
+```
+
+特点：**允许一定突发**（桶满时可持续消费）又限制平均速率，是生产最常用方案；每个请求一次 Redis 调用（Lua 保证原子性）。
+
+**面试速答**：漏桶 = "固定速度放水"，适合削峰保护下游；令牌桶 = "固定速率发令牌 + 攒令牌应对突发"，是生产首选，Guava RateLimiter、Redisson、Sentinel 底层都是令牌桶。
+
+**四种算法对比**：
+
+| 算法 | 实现 | 特点 | 场景 |
+|---|---|---|---|
+| 固定窗口 | INCR + EXPIRE | 简单，有临界问题 | 粗略限流 |
+| 滑动窗口 | Zset | 精确，内存开销大 | 精确控频（如登录失败次数） |
+| 漏桶 | List | 速率恒定，平滑 | 保护下游（削峰） |
+| 令牌桶 | Lua 脚本 | 允许突发，生产最常用 | 接口限流、网关限流 |
+
+**工程实践**：生产一般不裸写 Redis 限流，而是用现成组件——网关层用 **Sentinel / Nginx lua-resty-limit / Kong**，应用层用 **Redisson 的 RateLimiter（令牌桶）** 或 **Guava RateLimiter（单机）**。注意限流要配合**降级/熔断**（返回友好提示或兜底数据），并做好压测确定阈值。
+
+
 
 ## kafka
 
