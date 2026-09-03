@@ -38,6 +38,10 @@ int 和 float 是32位，long 和 double 都是64位。
 
 **引用传递**传递的是对象引用的副本，两个引用（原引用和副本）指向同一个对象，因此通过副本修改对象内部数据，会影响原对象。但如果修改副本的指向（如重新赋值），不会影响原引用的指向。
 
+### 重载和重写的区别
+
+重载（Overload）是“同类不同参”，重写（Override）是“子类改父类”
+
 ### 向上转型和向下转型
 
 - **向上转型**是使用父类类型的引用指向子类对象，通过这种方式，可以在运行时期采用不同的子类实现。
@@ -56,6 +60,12 @@ int 和 float 是32位，long 和 double 都是64位。
 - 接口只有定义，不能有方法的实现。
 
 接口用于定义类的规范，抽象类用来定义和描述类的共同特性和行为。
+
+**设计原则**：
+
+- 优先使用接口：它是对行为的抽象，可以多实现，解耦更彻底。
+- 抽象类适合"模板复用"：多个子类有公共代码（字段、方法实现），用抽象类抽取公共部分。
+- 经典组合：**抽象类实现接口**（如 AbstractList 实现 List），把公共实现下沉到抽象类，子类只需实现少量方法。
 
 ### 非静态内部类和静态内部类的区别
 
@@ -142,19 +152,125 @@ List<String> list = new ArrayList<String>();
 
 ### 反射机制
 
-反射是指在**运行时**获取类的元数据信息（Class 对象，JVM 加载类后存放在方法区/元空间中），从而动态地进行对象的创建、方法调用、字段访问等操作。注意：运行时不读 class 文件——class 文件在**类加载阶段**已被解析为方法区的运行时数据结构，反射读的是这份元数据。
+反射是指在**运行时**获取类的元数据信息（Class 对象，JVM 加载类后存放在方法区/元空间中），从而动态地进行对象的创建、方法调用、字段访问等操作。
 
-**为什么需要反射**：编译期无法确定要操作哪个类（如框架中"根据配置的类名字符串创建对象"），只有运行时才能拿到类信息。Spring IoC、MyBatis、动态代理、注解处理都依赖反射。
+![alt text](images/reflection.png)
+
+>注意：运行时不读 class 文件，class 文件在**类加载阶段**已被解析为方法区的运行时数据结构，反射读的是这份元数据。
+
+反射具有以下特性：
+
+- **运行时类信息访问：** 反射机制允许程序在运行时获取类的完整结构信息，包括类名、包名、父类、实现的接口、构造函数、方法和字段等。
+- **动态对象创建：** 可以使用反射API动态地创建对象实例，即使在编译时不知道具体的类名。通常通过 Constructor.newInstance() 方法实现（Class.newInstance() 自 Java 9 起已被标记为 @Deprecated，推荐使用 clazz.getDeclaredConstructor().newInstance()）。
+- **动态方法调用：** 可以在运行时动态地调用对象的方法，包括私有方法。这通过Method类的invoke()方法实现，允许你传入对象实例和参数值来执行方法。
+- **访问和修改字段值：** 反射还允许程序在运行时访问和修改对象的字段值，即使是私有的。这是通过Field类的get()和set()方法完成的。
+
+反射的应用场景：
+
+- **动态代理**
+- **注解**
+- **数据库驱动加载：** 在使用 JDBC 连接数据库时使用 Class.forName()通过反射加载数据库的驱动程序。
+- **配置文件加载：** Spring 框架的 IOC（动态加载管理 Bean），Spring通过配置文件配置各种各样的bean。
+
+    Spring通过XML配置模式装载Bean的过程：
+    - 将程序中所有XML或properties配置文件加载入内存
+    - Java类里面解析xml或者properties里面的内容，得到对应实体类的字节码字符串以及相关的属性信息
+    - 使用反射机制，根据这个字符串获得某个类的Class实例
+    - 动态配置实例的属性
 
 **性能与安全**：反射有方法调用开销（比直接调用慢），且可以绕过访问控制（setAccessible(true) 可访问 private 成员，因此框架才可能注入 private 字段）。JDK 17+ 对 setAccessible 有模块化限制（需 --add-opens）。
 
 ### 注解
 
-注解是一个继承了Annotation的特殊接口，通过Java的反射API Class.getAnnotations()从JVM内存中获取注解对象。
+注解本质上是一种特殊的接口，它继承自 java.lang.annotation.Annotation 接口，所以注解也叫声明式接口，例如，定义一个简单的注解：
 
-### 重载和重写的区别
+```java
+public @interface MyAnnotation {
+    String value();
+}
+```
 
-重载（Overload）是“同类不同参”，重写（Override）是“子类改父类”
+编译后，Java 编译器会将其转换为一个继承自 Annotation 的接口，并生成相应的字节码文件。
+
+根据注解的作用范围，Java 注解可以分为以下几种类型：
+
+- 源码级别注解 ：仅存在于源码中，编译后不会保留 `@Retention(RetentionPolicy.SOURCE)`。
+- 类文件级别注解 ：保留在 .class 文件中，但运行时不可见 `@Retention(RetentionPolicy.CLASS)`。
+- 运行时注解 ：保留在 .class 文件中，并且可以通过反射在运行时访问 `@Retention(RetentionPolicy.RUNTIME)`。
+
+只有运行时注解可以通过反射机制进行解析。
+
+当注解被标记为 RUNTIME 时，Java 编译器会在生成的 .class 文件中保存注解信息。这些信息存储在字节码的属性表（Attribute Table）中，具体包括以下内容：
+
+- RuntimeVisibleAnnotations ：存储运行时可见的注解信息。
+- RuntimeInvisibleAnnotations ：存储运行时不可见的注解信息。
+- RuntimeVisibleParameterAnnotations 和 RuntimeInvisibleParameterAnnotations ：存储方法参数上的注解信息。
+
+通过工具（如 javap -v）可以查看 .class 文件中的注解信息。
+
+### 异常体系
+
+![alt text](images/error.png)
+
+Java 的异常体系主要基于 Throwable 及其子类。Throwable 有两个重要的子类：Error 和 Exception，它们分别代表了不同类型的异常情况。
+
+- Error (错误)： 表示运行环境的错误，错误是程序无法处理的严重问题，如虚拟机错误、动态链接库失效等。程序不应该尝试捕获这类错误。例如，OutOfMemoryError、StackOverflowError 等。
+- Exception (异常)： 表示程序本身可以处理的异常情况。异常分为两大类：
+    - 非运行时异常（受检异常，Checked Exception）： 这类异常在编译时就必须被捕获或者声明抛出。它们通常是外部错误，如文件不存在 (FileNotFoundException)、类未找到 (ClassNotFoundException) 等。非运行时异常强制程序员处理这些可能出现的问题，增强了程序的健壮性。
+    - 运行时异常（非受检异常，Unchecked Exception 或 RuntimeException）： 这类异常特指 RuntimeException 及其子类。它与 Error 一起构成了 Java 中的非受检异常家族。运行时异常由程序逻辑错误导致，如空指针访问 (NullPointerException)、数组越界 (ArrayIndexOutOfBoundsException) 等。运行时异常是不需要在编译时强制捕获或声明的。
+
+### Object类有哪些方法
+
+Object 类是 Java 中所有类的根类，除 `Object` 本身外，所有类都直接或间接继承自它。它主要提供对象的**基本操作、类型判断、对象复制以及线程同步**等能力。
+
+Object 类常用的方法包括：
+
+- `getClass()`： 获取对象在运行时对应的 `Class` 对象，可以进一步通 **对象身份（引用）** 进行比较，即只有两个引用指向同一个对象时才返回 `true`。子类可以根据实际业务需求重写该方法，例如 `String` 就是根据字符串内容判断是否相等。
+
+- `toString()`： 返回对象的字符串表示形式。`Object` 默认返回类似 `类名@哈希值` 的字符串，实际开发中通常会重写该方法，用于输出对象的属性信息，方便调试和日志记录。
+
+- `clone()`： 创建当前对象的一个副本。`Object` 提供的是浅拷贝机制，使用时通常需要实现 `Cloneable` 接口，否则调用时可能抛出 `CloneNotSupportedException`。实际开发中通常更推荐使用拷贝构造、工厂方法等更加明确的对象复制方式。
+
+- `wait()`： 使当前线程进入等待状态，同时释放当前对象的监视器锁，直到其他线程调用该对象的 `notify()` 或 `notifyAll()`，或者等待被中断。调用该方法时，当前线程必须持有对象的监视器锁。
+
+- `wait(long timeout)`： 让当前线程最多等待指定的毫秒数。如果在等待期间收到 `notify()`、`notifyAll()` 或被中断，也可能提前结束等待。
+
+- `wait(long timeout, int nanos)`： `wait()` 的更精确版本，在指定毫秒数的基础上增加纳秒级的等待时间。
+
+- `notify()`： 唤醒一个正在该对象监视器上等待的线程。具体唤醒哪一个线程由 JVM 决定。调用该方法时，当前线程必须持有对象的监视器锁。
+
+- `notifyAll()`： 唤醒所有正在该对象监视器上等待的线程。调用该方法时，当前线程同样必须持有对象的监视器锁。
+
+- `finalize()`： 在对象被垃圾回收前尝试执行的清理方法。但该方法已经在 **Java 9 中被标记为 `@Deprecated`，并且不推荐使用**。现代 Java 应使用 `try-with-resources`、`AutoCloseable` 等机制显式释放资源。
+
+可以将 `Object` 的方法按照功能分为以下几类：
+
+```text
+Object
+│
+├── 类型信息
+│   └── getClass()
+│
+├── 对象比较
+│   ├── equals()
+│   └── hashCode()
+│
+├── 对象表示
+│   └── toString()
+│
+├── 对象复制
+│   └── clone()
+│
+├── 线程同步
+│   ├── wait()
+│   ├── wait(long)
+│   ├── wait(long, int)
+│   ├── notify()
+│   └── notifyAll()
+│
+└── 对象生命周期
+    └── finalize()  // 已废弃，不推荐使用
+```
 
 ### == 和 equals 的区别
 
@@ -170,50 +286,18 @@ a.equals(b);       // true，内容相同
 
 **重写 equals 必须重写 hashCode**：HashMap/HashSet 依赖 hashCode 定位桶，如果两个对象 equals 相等但 hashCode 不同，会导致同一个 key 存进不同桶，出现重复数据。
 
-### Object 类常用方法与 hashCode/equals 约定
-
-**Object 类 11 个方法**：getClass()、hashCode()、equals()、clone()、toString()、notify()、notifyAll()、wait()（3个重载）、finalize()。
-
-**hashCode 与 equals 的约定（必背）**：
+### hashCode与 equals 约定
 
 1. 两个对象 equals 相等 → hashCode **必须相等**（否则集合中出现重复元素）。
 2. 两个对象 hashCode 相等 → equals **不一定**相等（哈希冲突，靠 equals 进一步判断）。
 3. equals 相等的对象，其 hashCode 不能变（所以 hashCode 不能依赖可变字段）。
 
-```java
-// 一个常见的错误：只重写 equals 不重写 hashCode
-// HashSet<User> 中两个内容相同的 User 会被当成两个元素
-```
+一个常见的错误：只重写 equals 不重写 hashCode，HashSet<User> 中两个内容相同的 User 会被当成两个元素
 
-**hashCode 设计**：`Objects.hash(字段1, 字段2)` 或 `31 * 结果 + 字段.hashCode()`。为什么用 31：奇素数，分布均匀；`31 * i` 可被 JVM 优化为 `(i << 5) - i`，移位 + 减法性能高。
 
-**clone() 与深拷贝**：clone() 默认是浅拷贝（拷贝对象本身，引用字段共享），要深拷贝需重写 clone() 手动复制引用字段；更推荐用序列化或构造器拷贝实现深拷贝。
+**hashCode 设计**：`Objects.hash(字段1, 字段2)` 或 `31 * 结果 + 字段.hashCode()`
 
-### Comparable 和 Comparator 的区别（高频）
-
-| 维度 | Comparable | Comparator |
-|---|---|---|
-| 位置 | 类自身实现（"我支持与同类比较"） | 外部单独定义（"我定义一种比较规则"） |
-| 方法 | compareTo(T o) | compare(T o1, T o2) |
-| 侵入性 | 修改类本身，侵入性强 | 不修改类，解耦 |
-| 排序规则 | 只能一种（自然排序） | 可定义多种（如按年龄、按名字） |
-| 包 | java.lang | java.util |
-
-```java
-// Comparable：类内实现自然排序
-class User implements Comparable<User> {
-    int age;
-    public int compareTo(User o) { return this.age - o.age; }
-}
-
-// Comparator：外部定义多种规则
-Comparator<User> byAge = (u1, u2) -> u1.age - u2.age;
-Comparator<User> byName = (u1, u2) -> u1.name.compareTo(u2.name);
-users.sort(byAge.thenComparing(byName));  // 先按年龄，再按名字
-Collections.reverseOrder(byAge);          // 反转
-```
-
-**典型应用**：TreeSet/TreeMap 的排序、Collections.sort / list.sort()、Arrays.sort、Stream.sorted()。**注意**：`compareTo` 返回负数/零/正数分别表示小于/等于/大于，不要用 `a - b` 直接相减（整数溢出风险），用 `Integer.compare(a, b)`。
+**为什么使用31：** 奇素数，分布均匀；`31 * i` 可被 JVM 优化为 `(i << 5) - i`，移位 + 减法性能高。
 
 ### String、StringBuilder、StringBuffer 的区别
 
@@ -250,23 +334,8 @@ consumers.add(1);
 // Integer i = consumers.get(0); // 编译报错，读出来是 Object
 ```
 
-### 接口和抽象类的区别（高频必问）
 
-| 维度 | 抽象类 | 接口 |
-|---|---|---|
-| 关键字 | abstract class | interface |
-| 继承数量 | 单继承（一个类只能继承一个抽象类） | 多实现（一个类可实现多个接口） |
-| 构造器 | ✅ 有构造器 | ❌ 无构造器 |
-| 成员变量 | 可以有实例变量 | 只能是 public static final 常量（Java 8+ 接口可以有默认方法） |
-| 方法 | 可以有抽象方法和普通方法 | Java 7：只能抽象方法；Java 8：default/static 方法；Java 9：private 方法 |
-| 语义 | **"是什么"**（is-a），强调代码复用 | **"能做什么"**（can-do），强调能力约定 |
-| 访问修饰符 | 任意 | 默认 public |
 
-**设计原则（面试加分）**：
-
-- 优先使用接口：它是对行为的抽象，可以多实现，解耦更彻底。
-- 抽象类适合"模板复用"：多个子类有公共代码（字段、方法实现），用抽象类抽取公共部分。
-- 经典组合：**抽象类实现接口**（如 AbstractList 实现 List），把公共实现下沉到抽象类，子类只需实现少量方法。
 
 ### final、finally、finalize 的区别
 
@@ -316,20 +385,6 @@ try (FileInputStream in = new FileInputStream("a.txt");
 ```
 
 **底层原理**：编译后等价于 try-finally，但多了一个细节——如果 try 块抛异常且 close() 也抛异常，close 的异常会被**抑制（suppressed）**，附加在主异常上（通过 Throwable.addSuppressed），保证主异常不被掩盖。
-
-### java的异常体系
-
-```text
-                Throwable (根类)
-                /         \
-            Error         Exception (可处理)
-            /  \           /             \
-   OutOfMemoryError    RuntimeException   (受检异常)
-   StackOverflowError      \                 \
-                   NullPointerException    IOException
-                   ClassCastException      SQLException
-                   IndexOutOfBounds        FileNotFoundException
-```
 
 ### Future 与 completedFuture
 
