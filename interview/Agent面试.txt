@@ -1,0 +1,13 @@
+尊敬的面试官，你好，我叫xxx，今年xx岁，有xx年的工作经验。
+
+上家
+
+因为今年面试的是Agent工程师这么一个岗位，那我做要介绍一下我这方面的经验。
+
+我自己写过两个关于Agent的项目，第一个项目是一个小型的知识库项目，就是能导入word、pdf、markdown等文档到向量库中，然后可以通过agent针对这些文档进行问答，这个项目没用到什么框架，脚手架基本都是我自己搭建起来的，大模型我用的deepseek-v4，向量库用的milvus，嵌入式模型用的bge-m3，通过vllm部署。
+
+第二个项目是基于langgraph做的一个模拟订票的程序
+
+vllm/vllm-openai:v0.22.1 部署的 BAAI/bge-m3 模型，1024维度，支持最大 8192tokens，默认端口8000
+
+向量库使用的milvus： Milvus Standalone、milvus-minio、milvus-etcd  15930

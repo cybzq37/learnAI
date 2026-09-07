@@ -231,3 +231,53 @@ Object result = redis.eval(lua, Arrays.asList("bucket:api"), Arrays.asList("100"
 | 令牌桶 | Lua 脚本 | 允许突发，生产最常用 | 接口限流、网关限流 |
 
 **工程实践**：生产一般不裸写 Redis 限流，而是用现成组件——网关层用 **Sentinel / Nginx lua-resty-limit / Kong**，应用层用 **Redisson 的 RateLimiter（令牌桶）** 或 **Guava RateLimiter（单机）**。注意限流要配合**降级/熔断**（返回友好提示或兜底数据），并做好压测确定阈值。
+
+## Redis分布式实现方式
+
+一般都是 Redis Cluster 实现集群。
+
+```
+# 1. 基础网络与运行配置
+port 7001                     # 节点监听端口，每个实例必须不同
+bind 0.0.0.0                  # 允许外部访问，生产环境建议绑定具体内网IP
+daemonize yes                 # 以守护进程方式在后台运行
+dir /path/to/redis-cluster/7001/ # 数据文件存放目录，每个实例必须不同，防止数据覆盖
+
+# 2. 集群模式开关（最重要）
+cluster-enabled yes           # 必须开启，以启用集群模式
+
+# 3. 集群内部配置
+cluster-config-file nodes-7001.conf # 集群状态文件，由Redis自动维护，不需要手动编辑
+cluster-node-timeout 5000     # 节点超时时间（毫秒），用于故障检测
+
+# 4. 数据持久化（生产环境强烈建议开启）
+appendonly yes                # 开启AOF持久化，提高数据安全性
+```
+
+```bash
+# 示例：启动端口从7001到7006的6个实例
+for port in 7001 7002 7003 7004 7005 7006; do
+  redis-server /path/to/redis-${port}.conf
+done
+```
+
+```bash
+redis-cli --cluster create \
+  192.168.1.10:7001 \
+  192.168.1.11:7002 \
+  192.168.1.12:7003 \
+  192.168.1.10:7004 \
+  192.168.1.11:7005 \
+  192.168.1.12:7006 \
+  --cluster-replicas 1
+```
+
+```bash
+# 将新节点 7007 加入集群，并指定集群中任意一个现有节点（如 7001）作为“介绍人”
+redis-cli --cluster add-node 127.0.0.1:7007 127.0.0.1:7001
+```
+
+```bash
+# 以交互方式重新分片
+redis-cli --cluster reshard 127.0.0.1:7001
+```
