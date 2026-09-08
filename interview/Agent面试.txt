@@ -6,7 +6,7 @@
 
 我主要写过两个Agent相关项目。
 
-第一个是一个小型的知识库问答项目，通过Agent 调用 RAG 进行问答，
+第一个是一个小型的知识库问答项目，通过Agent 调用 vRAG 进行问答，
 
 他支持Word、PDF、Markdown等文档导入，文档解析使用微软的markitdown先转成markdown，然后根据markdown内容的标题段落进行文本块切分。
 

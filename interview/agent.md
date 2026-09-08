@@ -1,6 +1,18 @@
 ## 如何设计一个好的提示词模板
 
-角色 + 任务 + 背景 + 输入 + 要求 + 输出格式 + 示例 + 约束
+角色 + 目标 + 背景 + 输出格式 + 示例 + 约束 + (自我反思)
+
+## 上下文管理
+
+上下文的七大组成要素：
+
+- System Instructions — 系统指令，定义角色和行为边界
+- User Prompt — 用户的当前请求
+- Conversation History — 对话历史
+- Long-Term Memory — 跨会话的长期记忆
+- Retrieved Information (RAG) — 实时检索的外部知识
+- Available Tools — 可用工具的定义和 schema
+- Output Format — 输出格式要求
 
 ## ReAct 是什么
 
@@ -136,18 +148,6 @@ LangChain提供了多种Memory策略应对此问题：
 - 测试通过后，运行程序，输出结果，并对结果进行检查
 - 如果结果异常，进行反思
 
-## 上下文管理
-
-上下文的七大组成要素：
-
-- System Instructions — 系统指令，定义角色和行为边界
-- User Prompt — 用户的当前请求
-- Conversation History — 对话历史
-- Long-Term Memory — 跨会话的长期记忆
-- Retrieved Information (RAG) — 实时检索的外部知识
-- Available Tools — 可用工具的定义和 schema
-- Output Format — 输出格式要求
-
 ## 长上下文如何压缩
 
 保留最近3次的会话信息，然后对历史会话进行摘要压缩，保存结构化的信息：
@@ -206,24 +206,6 @@ LangChain提供了多种Memory策略应对此问题：
 ```
 用户问题
    ↓
-问题理解 / Query Rewrite
-   ↓
-检索（Retrieval）
-   ↓
-召回相关文档
-   ↓
-Rerank 重排序
-   ↓
-构造 Prompt + 上下文
-   ↓
-LLM 生成答案
-   ↓
-返回答案
-```
-
-```
-用户问题
-   ↓
 Query 理解 / 改写
    ↓
 Query Embedding
@@ -234,9 +216,7 @@ Query Embedding
    ↓
 重排序 Rerank
    ↓
-上下文组装 Context
-   ↓
-Prompt + Context
+上下文组装 Prompt + Context
    ↓
 LLM 生成答案
    ↓
@@ -256,7 +236,6 @@ LLM 生成答案
 
 1. 多路召回（Multi-path Retrieval） 不只用向量检索、同时用BM25关键词检索、图检索等，多路结果合并、去重、排序并返回。
 2. 混合检索（Hybrid Search） 向量相似度 + 关键词匹配，**加权融合**。
-3. 重排序（Rerank） 先用快方法召回Top-100，再用Cross-Encoder重新打分，取Top-5。
 
 *RAG rerank优化有哪些？*
 
