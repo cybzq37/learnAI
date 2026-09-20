@@ -168,3 +168,27 @@ ES **不直接支持"坐标反查地址"**，常见方案：
 - POI 检索 = `geo_point` + `geo_distance`/`geo_bounding_box` + `_geo_distance` 排序，底层 **BKD 树**加速；
 - 正地理编码 = 地址 → 坐标，发生在写入侧，靠**第三方 API 或自建词库**；
 - 逆地理编码 = 坐标 → 地址，用 `geo_shape` **点在多边形内**判断行政区，精确地址靠第三方 API。
+
+
+行政区划 -> geohash -> distance
+
+poi可以做kind分类 geo_point 类型
+
+附近的电话：
+第一层：行政区划
+第二层：geohash
+第三层：精确距离计算排名
+
+```
+{
+  "name": {
+    "type": "text",
+    "analyzer": "ik_max_word",
+    "search_analyzer": "ik_smart"
+  }
+}
+```
+写入分词和搜索分词
+文本类型：指定中文分词器
+
+

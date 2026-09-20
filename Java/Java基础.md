@@ -1,13 +1,5 @@
 ## 1. 基础部分
 
-### 八种基本数据类型
-
-- 数值型：整数类型（byte、short、int、long）和 浮点类型（float、double）
-- 字符型：char
-- 布尔型：boolean
-
-int 和 float 是32位，long 和 double 都是64位。
-
 ### 自动装箱（Boxing）和拆箱（Unboxing）
 
 装箱（Boxing）和拆箱（Unboxing）是将基本数据类型和对应的包装类之间进行转换的过程。
@@ -37,10 +29,6 @@ int 和 float 是32位，long 和 double 都是64位。
 **值传递**传递的是**值的副本**，主要用于基础数据类型，修改参数副本不会影响原变量的值。
 
 **引用传递**传递的是对象引用的副本，两个引用（原引用和副本）指向同一个对象，因此通过副本修改对象内部数据，会影响原对象。但如果修改副本的指向（如重新赋值），不会影响原引用的指向。
-
-### 重载和重写的区别
-
-重载（Overload）是“同类不同参”，重写（Override）是“子类改父类”
 
 ### 向上转型和向下转型
 
@@ -633,3 +621,15 @@ double area(Shape s) {
 ```
 
 
+```
+synchronized
+    ├── wait()
+    ├── notify()
+    └── notifyAll()
+
+ReentrantLock
+    └── Condition
+         ├── await()
+         ├── signal()
+         └── signalAll()
+```
