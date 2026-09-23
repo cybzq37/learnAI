@@ -1,5 +1,7 @@
 ## 可变类型 vs 不可变类型
 
+在 Python 中，一切皆对象。变量本身并不"存储"值，而是指向一个对象。
+
 - 不可变：`int`、`float`、`str`、`tuple`、`frozenset`
 - 可变：`list`、`dict`、`set`
 
@@ -8,25 +10,25 @@
 元组小坑：元组本身不可变，但如果元组里面包含可变对象，可变对象内部可以改。  
 
 函数传参：
-- 传**不可变**：函数内部修改，不会影响外部变量（相当于传值）
-- 传**可变**：函数内原地修改，外部对象跟着变（传引用）  
+- 传**不可变**：函数内部修改，不会影响外部变量（相当于传值）  
+- 传**可变**：函数内原地修改，外部对象跟着变（传引用）    
 
-- 常见坑：函数**默认参数**使用可变对象  
+- 常见坑：函数**默认参数**使用可变对象   
 
 ```python
 def func(item, lst=[]):
     lst.append(item)
     return lst
 
-print(func(1)) # [1]
-print(func(2)) # [1,2] 不是[2]！列表被共享了
+print(func(1)) # [1]  
+print(func(2)) # [1,2] 不是[2]！列表被共享了  
 ```
 
 ## `is` 与 `==`
 
-- `==` 比较值，`is` 比较身份（内存地址）
-- 小整数缓存 `[-5, 256]`、短字符串驻留会导致 `is` 偶尔“看起来对”，但不要依赖
-- 判断 `None` 用 `is None`
+- `==` 比较值，`is` 比较身份（内存地址）  
+- 小整数缓存 `[-5, 256]`、短字符串驻留会导致 `is` 偶尔“看起来对”，但不要依赖  
+- 判断 `None` 用 `is None`  
 
 ## 深拷贝与浅拷贝
 
@@ -43,9 +45,9 @@ c = copy.deepcopy(a)  # 深拷贝：递归复制
 
 ## 全局解释器锁（GIL）
 
-GIL（Global Interpreter Lock） 是 CPython 解释器中的一个互斥锁，它保证同一时刻只有一个线程执行 Python 代码。也就是说，即使在多核 CPU 上，Python 的多线程也无法真正并行执行 Python 代码。
+GIL（Global Interpreter Lock）是 CPython 解释器中的一个互斥锁，它保证同一时刻，**一个进程内**只有**一个线程**在执行 Python 字节码。
 
-CPython 使用引用计数做内存管理。如果多个线程同时修改同一个对象的引用计数，可能导致内存泄漏或对象被提前释放。GIL 用最简单的方式解决了这个问题：同一时刻只让一个线程操作 Python 对象。
+CPython 使用**引用计数**做内存管理。如果多个线程同时修改同一个对象的引用计数，可能导致内存泄漏或对象被提前释放。GIL 用最简单的方式解决了这个问题：同一时刻只让一个线程操作 Python 对象。
 
 好处：
 - 内存管理简单、安全
@@ -56,40 +58,7 @@ CPython 使用引用计数做内存管理。如果多个线程同时修改同一
 - 多线程无法利用多核做 CPU 密集计算
 
 对于 CPU 密集型（计算、循环）应用，多线程几乎无加速，甚至更慢，用 multiprocessing 或多进程。  
-对于 IO 密集型（网络、文件、数据库），能有效进行提速，用 threading / asyncio  
-
-```python
-from multiprocessing import Pool
-
-def cpu_task(n):
-    x = 0
-    for _ in range(n):
-        x += 1
-    return x
-
-if __name__ == "__main__":
-    with Pool(4) as p:
-        print(p.map(cpu_task, [10_000_000]*4))
-```
-
-```python
-import asyncio, aiohttp
-
-async def fetch(url):
-    async with aiohttp.ClientSession() as s:
-        async with s.get(url) as r:
-            return await r.text()
-```
-
-## 私有化
-
-__xx : 在类中是私有属性方法，子类不能继承。
-__xx__ ： 魔法方法，内置方法。子类可以继承
-__xx : 在导入模块时禁止导入。
-
-## 变量查找规则
-
-Python 变量查找规则 LEGB：`Local(本地) → Enclosing(嵌套外层) → Global(全局) → Builtin(内置)`
+对于 IO 密集型（网络、文件、数据库），能有效进行提速，用 threading / asyncio ，因为 IO 操作的大部分时间都是在等待内核把数据从磁盘/网卡拷到内核缓冲区，再拷到用户缓冲区，等待时间不执行 Python 字节码。
 
 ## *args 与 **kwarg  
 
@@ -150,6 +119,10 @@ def wrapper(*args, **kwargs):
     return result
 ```
 
+## 变量查找规则
+
+Python 变量查找规则 LEGB：`Local(本地) → Enclosing(嵌套外层) → Global(全局) → Builtin(内置)`
+
 ## 闭包与 `nonlocal`
 
 闭包 = 内层函数 + 内层函数引用的外层非全局变量  
@@ -195,7 +168,7 @@ def hello():
     print("hello world")
 
 hello()
-```
+```  
 
 追问：**如果原函数有参数怎么办？** 用 `*args, **kwargs` 万能参数，适配任意参数的被装饰函数。
 
@@ -298,6 +271,13 @@ def f():
 # 仅仅导入，还没调用f()，就已经打印：装饰执行！
 ```
 
+## 私有化
+
+name：公开方法，正常访问
+_name：单下划线，约定"内部使用"，别乱碰，仅仅是约定
+__name: 在类中是私有属性方法，子类不能继承，在导入模块时禁止导入。
+__name__ ： 魔法方法，内置方法。子类可以继承
+
 ## 魔法方法
 
 魔法方法是内置回调方法，不用手动调用；`__new__`造对象，`__init__`初始化；`__call__`让实例可调用；`__getitem__`支持下标；`__enter__/__exit__`实现 with；运算符对应`__add__/__eq__`。 
@@ -393,7 +373,7 @@ class MyContext:
         return True # 捕获异常
 
 with MyContext() as m:
-    print("in with")
+    print("in with")  
 ```
 
 ## 异常处理
@@ -493,7 +473,7 @@ except ZeroDivisionError:
     print("除零")
 ```
 
-永远进不到 `ZeroDivisionError`，因为 `Exception` 是父类，提前捕获。
+永远进不到 `ZeroDivisionError`，因为 `Exception` 是父类，提前捕获。  
 
 ## 迭代器
 
@@ -554,11 +534,13 @@ for i in MyIterator(3):
 
 **迭代器特点**  
 
-1. **单向不可逆，只能往前迭代，不能回退**
-2. **一次性消费**，迭代完之后就空了，不能重复使用
+1. **单向不可逆，只能往前迭代，不能回退**  
+2. **一次性消费**，迭代完之后就空了，不能重复使用  
 3. 惰性取值：**一次只产生一个元素**，不一次性加载全部数据（生成器就是迭代器）  
 
 ## 生成器
+
+借助 yield 实现的，含 yield 的函数被调用时返回一个生成器对象，这个对象是可迭代的。
 
 生成器是一种特殊迭代器，不需要一次性把所有数据存到内存，按需产生数据，节省内存。  
 
@@ -577,7 +559,7 @@ for i in MyIterator(3):
 3. 下次调用 `next()` 的时候，**从暂停的地方继续往下执行**  
 
 ```python
-def numbers():
+def numbers():  
     yield 1
     yield 2
     yield 3
@@ -720,6 +702,24 @@ asyncio.run(main())
 | `asyncio.Queue` | 异步队列 | 协程间安全的生产者-消费者通信 |
 | `asyncio.Lock / Semaphore` | 异步同步原语 | 保护共享资源、限制并发数量 |
 
+## asyncio
+
+asyncio 是 Python 的异步 I/O 框架，用单线程 + 事件循环实现并发，特别适合大量 I/O 等待的场景（网络、文件、数据库），主要是调度协程，性能更好。
+
+
+## threading
+
+threading 是 Python 的多线程模块，用多个线程实现并发。适合 I/O 密集型任务，但受 GIL 限制，CPU 密集型几乎无法加速。  
+
+线程锁 
+
+Lock Event Condition 
+Event 等的是一个"布尔标志"（发生了没有）；Condition 等的是一个"任意条件"（满足没有），且能精准唤醒。
+
+## multiprocessing
+
+multiprocessing 是 Python 的多进程模块，用多个进程实现真正的并行，绕过 GIL，特别适合 CPU 密集型任务。
+
 ### async/await vs 多线程/多进程
 
 | 方式 | 适用场景 | 特点 |
@@ -744,9 +744,152 @@ def tag(name):
 
 with tag("h1"):
     print("hello")
+
+# 等价写法
+from contextlib import contextmanager
+
+@contextmanager
+def tag(name):
+    print(f"<{name}>")
+    yield
+    print(f"</{name}>")
+
+with tag("h1"):
+    print("hello")
 ```
 
-常见用途：文件、锁、数据库连接、事务、临时目录。
+常见用途：文件资源的关闭和释放、锁、数据库连接打开和关闭、事务、临时目录。
+
+## 泛型
+
+泛型解决的核心问题是："这段代码处理某种类型，但我不想写死是哪种类型，同时又要保留类型信息。"
+
+先看没有泛型的痛点：
+
+```python
+from typing import Any
+
+def first(items: list[Any]) -> Any:
+    return items[0]
+
+x = first([1, 2, 3])
+# x 的类型是 Any —— 检查器不知道它是 int
+# 于是 x.upper() 不会报错，但运行时炸
+```
+
+Any 等于放弃类型检查。泛型就是为了既"通用"又"保留类型"：
+
+```python
+from typing import TypeVar
+
+T = TypeVar("T")
+
+def first(items: list[T]) -> T:
+    return items[0]
+
+x = first([1, 2, 3])      # 检查器知道 x 是 int
+y = first(["a", "b"])     # 检查器知道 y 是 str
+```
+
+**类型变量**  
+```python
+from typing import TypeVar
+
+T = TypeVar("T")          # 任意类型
+
+def identity(x: T) -> T:
+    return x
+
+identity(1)        # T = int
+identity("a")      # T = str
+```
+
+**多个 TypeVar 类型**
+
+```python
+from typing import TypeVar
+
+K = TypeVar("K")
+V = TypeVar("V")
+
+def invert(d: dict[K, V]) -> dict[V, K]:
+    return {v: k for k, v in d.items()}
+
+invert({"a": 1})     # dict[str, int] → dict[int, str]
+```
+
+**Generic：自定义泛型类**
+
+```python
+from typing import TypeVar, Generic
+
+T = TypeVar("T")
+
+class Stack(Generic[T]):
+    def __init__(self) -> None:
+        self._items: list[T] = []
+
+    def push(self, item: T) -> None:
+        self._items.append(item)
+
+    def pop(self) -> T:
+        return self._items.pop()
+
+    def __len__(self) -> int:
+        return len(self._items)
+
+s = Stack[int]()      # 指定 T = int
+s.push(1)             # ✅
+s.push("x")           # ❌ 检查器报错
+top = s.pop()         # 检查器知道 top 是 int
+```
+
+## 类型注解
+
+类型注解是 Python 3.5+ 引入的特性：给变量、函数、类标注类型。核心一句话：类型注解不影响运行，只是给"人、IDE、类型检查器"看的说明。
+
+```python
+def add(a: int, b: int) -> int:
+    return a + b
+
+add("x", "y")   # 运行时照样执行！不会报错
+```
+
+## 面向对象高级机制
+
+- `@property` / setter / deleter
+- `@classmethod`、`@staticmethod`
+- `__slots__` 限制实例属性、节省内存
+- 运算符重载：`__add__`、`__eq__`、`__len__`、`__getitem__`、`__iter__`
+- `__call__` 让实例可调用
+- 描述符协议：`__get__`、`__set__`、`__set_name__`
+- 元类：`type`、`__new__`、`__init_subclass__`
+- 抽象基类：`ABC`、`@abstractmethod`
+- MRO、`super()`、多继承、Mixin
+
+```python
+class User:
+    __slots__ = ("name", "age")
+
+    def __init__(self, name, age):
+        self.name = name
+        self.age = age
+
+    def __call__(self):
+        return f"{self.name}:{self.age}"
+```
+
+`property`、`classmethod`、`staticmethod` 的底层其实都和描述符有关。
+
+## 4. 鸭子类型与协议
+
+```python
+# 不关心类型，只关心行为
+def quack(obj):
+    obj.quack()
+```
+
+Python 3.8+ 的 `typing.Protocol` 支持结构化子类型。
 
 
 
@@ -814,60 +957,9 @@ match command.split():
 
 支持字面量、序列、映射、类模式、守卫条件等。
 
-## 类型注解与泛型
 
-```python
-from typing import TypeVar, Generic, Protocol, TypedDict, Literal, Final, overload
 
-T = TypeVar("T")
 
-class Repo(Protocol[T]):
-    def get(self, id: int) -> T: ...
-
-class User(TypedDict):
-    name: str
-    age: int
-
-Mode = Literal["r", "w"]
-MAX: Final = 100
-```
-
-常见：`list[int]`、`dict[str, int]`、`X | Y`、`Optional[X]`、`Callable`、`TypeVar`、`Generic`、`Protocol`、`TypedDict`、`Literal`、`Final`、`@overload`。
-
-Python 3.12+ 支持 PEP 695：
-
-```python
-def first[T](items: list[T]) -> T:
-    return items[0]
-
-type Vector = list[float]
-```
-
-## 面向对象高级机制
-
-- `@property` / setter / deleter
-- `@classmethod`、`@staticmethod`
-- `__slots__` 限制实例属性、节省内存
-- 运算符重载：`__add__`、`__eq__`、`__len__`、`__getitem__`、`__iter__`
-- `__call__` 让实例可调用
-- 描述符协议：`__get__`、`__set__`、`__set_name__`
-- 元类：`type`、`__new__`、`__init_subclass__`
-- 抽象基类：`ABC`、`@abstractmethod`
-- MRO、`super()`、多继承、Mixin
-
-```python
-class User:
-    __slots__ = ("name", "age")
-
-    def __init__(self, name, age):
-        self.name = name
-        self.age = age
-
-    def __call__(self):
-        return f"{self.name}:{self.age}"
-```
-
-`property`、`classmethod`、`staticmethod` 的底层其实都和描述符有关。
 
 ## 数据类与枚举
 
@@ -975,16 +1067,6 @@ class Stack(Generic[T]):
     def push(self, x: T) -> None: ...
     def pop(self) -> T: ...
 ```
-
-## 4. 鸭子类型与协议
-
-```python
-# 不关心类型，只关心行为
-def quack(obj):
-    obj.quack()
-```
-
-Python 3.8+ 的 `typing.Protocol` 支持结构化子类型。
 
 ## 十、面向对象与设计
 

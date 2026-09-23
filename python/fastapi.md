@@ -2,20 +2,26 @@
 
 **Q1：FastAPI 由哪几个库构建？各自负责什么？**
 
-FastAPI 建立在两个核心库之上：**Starlette** 负责 Web 层能力（路由、Request/Response、中间件、WebSocket、静态文件、异常处理、测试客户端、线程池处理同步端点），**Pydantic** 负责数据校验、类型转换和 JSON Schema 生成。
+FastAPI 建立在两个核心库之上：
+**Starlette** 负责 Web 层能力（路由、Request/Response、中间件、WebSocket、静态文件、异常处理、测试客户端、线程池处理同步端点）  
+**Pydantic** 负责数据校验、类型转换和 JSON Schema 生成。   
+**SQLAlchemy 2.0（异步）+ Pydantic**  
+  
 
-面试中如果只答“基于 Starlette 和 Pydantic”会被追问分工。完整回答应说清：**Uvicorn 是 ASGI 服务器**，负责监听端口、接收 HTTP/WebSocket 连接，按 ASGI 规范调用应用；**Starlette 是 Web 框架底座**；**FastAPI 在 Starlette 之上加了类型驱动的 API 开发体验**；**Pydantic 是数据校验引擎**。
+## ASGI 和 WSGI 的区别是什么？
 
-**Q2：ASGI 和 WSGI 的本质区别是什么？**
+WSGI 是同步调用协议，一个请求对应一个线程/进程，对 WebSocket、长连接、流式响应支持不自然。  
+ASGI 是异步调用协议，支持异步调用、多消息通信和多种协议（HTTP、WebSocket、SSE 等）。  
 
-WSGI 应用是**同步 callable**，一个请求对应一个线程/进程，对 WebSocket、长连接、流式响应支持不自然。ASGI 把连接抽象为 `scope + receive + send` 三个参数，使框架可以处理普通 HTTP、WebSocket 长连接、长轮询、流式响应和异步 IO 任务。
+WSGI实现：Gunicorn 服务器
+ASGI实现：Uvicorn 服务器
 
-关键追问：“为什么 WSGI 不支持 WebSocket？”——因为 WSGI 的接口是“请求进来 → 一次性返回响应”的同步模型，没有持久双向通信的抽象。
+关键追问：“为什么 WSGI 不支持 WebSocket？”——因为 WSGI 的接口是“请求进来 → 一次性返回响应”的同步模型，没有持久双向通信的抽象。  
 
-**Q3：FastAPI 的快体现在哪里？**
+## FastAPI 的快体现在哪里？
 
-FastAPI 的高性能主要来自两个层面：底层是 Starlette 的 ASGI 异步处理能力，上层是 Pydantic V2 用 Rust 重写的核心校验引擎。
-但面试官真正想听的是：**async 的优势主要体现在高并发 IO，不是让 CPU 计算自动并行**。`async def` 里必须一路使用可 await 的库，否则就是伪异步；同步库用 `def` 或显式线程池。
+**async 的优势主要体现在高并发 IO，不是让 CPU 计算自动并行**。  
+`async def` 里必须一路使用可 await 的库，否则就是伪异步；同步库用 `def` 或显式线程池。  
 
 ## 二、Pydantic 与数据验证
 
@@ -25,16 +31,17 @@ Python 解释器本身不强制类型提示。Pydantic 在**类定义阶段**读
 
 **Q5：为什么请求模型、存储模型、响应模型应该分开？**
 
-这是一个高频的高级问题。用一个 `User` 模型同时做请求体和响应体，会导致 `hashed_password` 通过 `response_model` 泄露。正确做法是定义 `UserCreate`（含明文密码）、`UserInDB`（含哈希）、`UserPublic`（不含敏感字段），FastAPI 的 `response_model=UserPublic` 会自动过滤输出。Pydantic V2 的 `model_config` 中还可以用 `from_attributes=True` 配合 ORM 对象。
+这是一个高频的高级问题。用一个 `User` 模型同时做请求体和响应体，会导致 `hashed_password` 通过 `response_model` 泄露。  
+正确做法是定义 `UserCreate`（含明文密码）、`UserInDB`（含哈希）、`UserPublic`（不含敏感字段），FastAPI 的 `response_model=UserPublic` 会自动过滤输出。Pydantic V2 的 `model_config` 中还可以用 `from_attributes=True` 配合 ORM 对象。  
 
-**Q6：Pydantic V2 的 lax 和 strict 模式有什么区别？**
+**Q6：Pydantic V2 的 lax 和 strict 模式有什么区别？**  
 
-lax 模式（默认）允许类型强制转换，比如字符串 `"123"` 转 `int`；strict 模式拒绝任何隐式转换。**coercion 的危险场景**：API 接收 `{"age": "not_a_number"}` 时 lax 模式报错，但如果传入 `{"age": true}`，lax 模式可能把 `True` 转成 `1`，这在业务上通常是 bug。
+lax 模式（默认）允许类型强制转换，比如字符串 `"123"` 转 `int`；strict 模式拒绝任何隐式转换。  
+**coercion 的危险场景**：API 接收 `{"age": "not_a_number"}` 时 lax 模式报错，但如果传入 `{"age": true}`，lax 模式可能把 `True` 转成 `1`，这在业务上通常是 bug。
 
-**Q7：如何实现超出 Pydantic 默认能力的自定义校验？**
+**Q7：如何实现超出 Pydantic 默认能力的自定义校验？**  
 
 使用 `@field_validator`（Pydantic V2）或 `@model_validator` 实现跨字段校验。例如密码长度校验、密码与确认密码一致性校验。自定义校验适用于业务规则复杂、输入需要预处理、安全强制检查等场景。
-
 
 ## 三、异步编程与并发
 
@@ -93,13 +100,14 @@ FastAPI 在启动时分析路径操作函数的签名，构建依赖树。每个
 
 **Q19：SSE 和 WebSocket 分别适用于什么场景？**
 
-SSE（Server-Sent Events）是**单向**的服务器到客户端推送，基于 HTTP 长连接，适合 LLM token 逐字输出、实时通知。WebSocket 是**全双工**通信，适合聊天、协作编辑等需要客户端持续发送消息的场景。
+SSE（Server-Sent Events）是**单向**的服务器到客户端推送，基于 HTTP 长连接，适合 LLM token 逐字输出、实时通知。  
+WebSocket 是**全双工**通信，适合聊天、协作编辑等需要客户端持续发送消息的场景。    
 
 **Q20：FastAPI 中如何实现流式响应？**
 
 使用 `StreamingResponse` 配合异步生成器。FastAPI 2.0 对流式响应做了底层重构，原生支持 `AsyncGenerator` 类型提示驱动的流式输出。在大模型服务中，典型模式是 `async def generate(): async for chunk in llm.stream(prompt): yield f"data: {chunk}\n\n"`。
 
-**Q21：WebSocket 的认证怎么做？**
+**Q21：WebSocket 的认证怎么做？**  
 
 FastAPI 的 WebSocket 没有内置的中间件认证。典型做法是在 `websocket.accept()` 之前校验 token（从 query 参数或首条消息中获取），校验失败则 `await websocket.close(code=1008)`。FastAPI 的 WebSocket 支持依赖注入，可以复用 HTTP 端点的认证依赖。
 
@@ -108,7 +116,9 @@ FastAPI 的 WebSocket 没有内置的中间件认证。典型做法是在 `webso
 
 **Q22：FastAPI 的 JWT 认证完整流程？**
 
-1）定义 `SECRET_KEY` 和算法（HS256 或 RS256）；2）登录端点用 `OAuth2PasswordRequestForm` 接收凭证，校验密码哈希后生成 JWT；3）创建 `OAuth2PasswordBearer` 依赖，在每个受保护端点上通过 `Depends` 注入，解码 token 并校验 `exp` 声明。
+1）定义 `SECRET_KEY` 和算法（HS256 或 RS256）；  
+2）登录端点用 `OAuth2PasswordRequestForm` 接收凭证，校验密码哈希后生成 JWT；  
+3）创建 `OAuth2PasswordBearer` 依赖，在每个受保护端点上通过 `Depends` 注入，解码 token 并校验 `exp` 声明。  
 
 **Q23：JWT 的安全规则有哪些必须遵守？**
 
@@ -180,11 +190,11 @@ Gunicorn 作为**进程管理器**，Uvicorn 作为 **worker**。`gunicorn -k uv
 
 **Q34：BackgroundTasks 和 Celery 如何选择？**
 
-`BackgroundTasks` 适合**响应后执行、丢失可接受**的任务（发送邮件、写日志、更新统计）。Celery 适合**必须可靠执行、需要重试和持久化**的任务（支付处理、文件转换、批量计算）。BackgroundTasks 同进程运行，进程崩溃任务丢失。
+`BackgroundTasks` 适合**响应后执行、丢失可接受**的任务（发送邮件、写日志、更新统计）。Celery 适合**必须可靠执行、需要重试和持久化**的任务（支付处理、文件转换、批量计算）。BackgroundTasks 同进程运行，进程崩溃任务丢失。  
 
 **Q35：FastAPI 微服务之间如何通信？**
 
-REST API（HTTP 端点同步调用）、消息队列（RabbitMQ/Kafka 异步解耦）、服务发现（动态定位服务实例）。设计原则：独立部署、独立数据库、明确的 API 契约、集中式认证和日志。
+REST API（HTTP 端点同步调用）、消息队列（RabbitMQ/Kafka 异步解耦）、服务发现（动态定位服务实例）。设计原则：独立部署、独立数据库、明确的 API 契约、集中式认证和日志。  
 
 **Q36：如何实现零停机部署？**
 
