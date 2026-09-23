@@ -55,8 +55,8 @@ CPython 使用引用计数做内存管理。如果多个线程同时修改同一
 代价：
 - 多线程无法利用多核做 CPU 密集计算
 
-对于 CPU 密集型（计算、循环）应用，多线程几乎无加速，甚至更慢，用 multiprocessing 或多进程。
-对于 IO 密集型（网络、文件、数据库），能有效进行提速，用 threading / asyncio
+对于 CPU 密集型（计算、循环）应用，多线程几乎无加速，甚至更慢，用 multiprocessing 或多进程。  
+对于 IO 密集型（网络、文件、数据库），能有效进行提速，用 threading / asyncio  
 
 ```python
 from multiprocessing import Pool
